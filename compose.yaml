@@ -7,9 +7,9 @@ services:
     volumes:
       - ./data:/data
     networks:
-      - openathlete
+      - openathlete-network
 
 networks:
-  openathlete:
+  openathlete-network:
     external: true
-    name: openathlete_default
+    name: openathlete-network
