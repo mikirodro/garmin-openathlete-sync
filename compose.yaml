@@ -1,0 +1,15 @@
+services:
+  garmin-openathlete-sync:
+    build: .
+    container_name: garmin-openathlete-sync
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    networks:
+      - openathlete
+
+networks:
+  openathlete:
+    external: true
+    name: openathlete_default
