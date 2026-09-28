@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from garminconnect import ActivityDownloadFormat, Garmin
+from garminconnect import Garmin
 
 SPORT_MAP = {
     "running": "RUNNING",
@@ -42,7 +42,5 @@ class GarminClient:
 
     def download_tcx(self, activity_id, out):
         out.write_bytes(
-            self.client.download_activity(
-                activity_id, ActivityDownloadFormat.TCX
-            )
+            self.client.download_activity(activity_id)
         )
