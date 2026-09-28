@@ -3,10 +3,10 @@
 Docker service that imports Garmin Connect activities into a self-hosted OpenAthlete instance.
 
 ## Status
-Initial implementation: Garmin activity summaries are created as OpenAthlete ACTIVITY events and the original TCX is retained locally for the next full-data import phase.
+Current implementation: Garmin activity summaries are created as OpenAthlete ACTIVITY events and the original TCX is retained locally. The OpenAthlete API currently exposes event creation for activity metadata; its full Garmin stream import is handled by its provider integration rather than by POST /event.
 
 ## Run
-Copy .env.example to .env, adjust OPENATHLETE_BASE_URL to the API address reachable from this container, then:
+Copy .env.example to .env. With the Docker Compose stack you supplied, keep OPENATHLETE_BASE_URL=http://api:3000, then:
 
     docker compose up -d --build
     docker compose logs -f
