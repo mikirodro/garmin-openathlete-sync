@@ -6,10 +6,3 @@ services:
     env_file: .env
     volumes:
       - ./data:/data
-    networks:
-      - openathlete-network
-
-networks:
-  openathlete-network:
-    external: true
-    name: openathlete-network

@@ -16,7 +16,7 @@ class Config:
     def from_env(cls):
         data=Path(os.getenv("DATA_DIR","/data"))
         c=cls(os.getenv("GARMIN_EMAIL",""),secret("GARMIN_PASSWORD"),
-              os.getenv("OPENATHLETE_BASE_URL","").rstrip("/"),
+              os.getenv("OPENATHLETE_BASE_URL", "http://api:3000").rstrip("/"),
               os.getenv("OPENATHLETE_EMAIL",""),secret("OPENATHLETE_PASSWORD"),
               int(os.getenv("SYNC_INTERVAL_SECONDS","900")),
               int(os.getenv("GARMIN_ACTIVITY_LIMIT","20")),
