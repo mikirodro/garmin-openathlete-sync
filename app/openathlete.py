@@ -68,5 +68,13 @@ class OpenAthleteClient:
                 headers={"Authorization": "Bearer " + self.access},
                 timeout=30,
             )
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except requests.HTTPError as exc:
+            detail = r.text.strip()[:1000]
+            if detail:
+                raise requests.HTTPError(
+                    f"{exc}; response body: {detail}", response=r
+                ) from exc
+            raise
         return r.json()
