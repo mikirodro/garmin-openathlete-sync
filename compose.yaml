@@ -3,6 +3,10 @@ services:
     build: .
     container_name: garmin-openathlete-sync
     restart: unless-stopped
+    init: true
     env_file: .env
+    environment:
+      SYNC_INTERVAL_SECONDS: ${SYNC_INTERVAL_SECONDS:-86400}
+      DATA_DIR: /data
     volumes:
       - ./data:/data

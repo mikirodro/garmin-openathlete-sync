@@ -1,3 +1,2 @@
-garminconnect
-requests>=2.32,<3
-pytest>=8,<9
+garminconnect>=0.3.17,<0.4
+requests>=2.33,<3

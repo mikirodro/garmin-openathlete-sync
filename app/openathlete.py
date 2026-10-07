@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import requests
 
 
@@ -45,36 +47,27 @@ class OpenAthleteClient:
         self.access = data["accessToken"]
         self.refresh_token = data["refreshToken"]
 
-    def create_activity(self, name, start, end, sport, description):
-        payload = {
-            "type": "ACTIVITY",
-            "startDate": start.isoformat(),
-            "endDate": end.isoformat(),
-            "name": (name or "Garmin activity")[:100],
-            "sport": sport,
-            "description": description,
-        }
-        r = self.s.post(
-            self.base_url + "/event",
-            json=payload,
-            headers={"Authorization": "Bearer " + self.access},
-            timeout=30,
-        )
+    def import_fit(self, file_path: Path, name: str):
+        def upload():
+            with file_path.open("rb") as activity_file:
+                return self.s.post(
+                    self.base_url + "/activity-import/fit",
+                    data={"name": (name.strip() or "Garmin activity")[:100]},
+                    files={
+                        "file": (
+                            file_path.name,
+                            activity_file,
+                            "application/vnd.garmin.fit",
+                        )
+                    },
+                    headers={"Authorization": "Bearer " + self.access},
+                    timeout=120,
+                )
+
+        self.login()
+        r = upload()
         if r.status_code == 401:
             self.refresh()
-            r = self.s.post(
-                self.base_url + "/event",
-                json=payload,
-                headers={"Authorization": "Bearer " + self.access},
-                timeout=30,
-            )
-        try:
-            r.raise_for_status()
-        except requests.HTTPError as exc:
-            detail = r.text.strip()[:1000]
-            if detail:
-                raise requests.HTTPError(
-                    f"{exc}; response body: {detail}", response=r
-                ) from exc
-            raise
+            r = upload()
+        r.raise_for_status()
         return r.json()
