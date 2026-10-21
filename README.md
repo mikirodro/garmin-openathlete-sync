@@ -5,7 +5,7 @@ Servicio Docker que descarga los FIT originales de Garmin Connect con `python-ga
 ## Inicio
 
 1. Copia `.env.example` a `.env` y completa las credenciales de ambas cuentas. La cuenta OpenAthlete debe tener perfil de atleta.
-2. Configura `OPENATHLETE_BASE_URL` con la URL de la API accesible desde el contenedor. Para la API directa puede ser `http://api:3000`; detrás del proxy web suele ser `https://tu-dominio/api`. `localhost` dentro del contenedor apunta al propio contenedor.
+2. Arranca OpenAthlete y configura `OPENATHLETE_BASE_URL=http://api:3000`. El Compose comparte su red `openathlete_openathlete-network`; ajusta el nombre si tu despliegue usa otro. Consulta [DEPLOYMENT.md](DEPLOYMENT.md) para los requisitos y la operación. `localhost` dentro del contenedor apunta al propio contenedor.
 3. Ejecuta:
 
 ```sh

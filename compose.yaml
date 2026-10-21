@@ -10,3 +10,10 @@ services:
       DATA_DIR: /data
     volumes:
       - ./data:/data
+    networks:
+      - openathlete
+
+networks:
+  openathlete:
+    external: true
+    name: openathlete_openathlete-network
