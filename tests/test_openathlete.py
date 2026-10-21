@@ -70,3 +70,36 @@ def test_import_fit_uploads_file_and_retries_after_refresh(
     )
 
     assert all(call["name"] == "Morning run" for call in session.calls)
+
+
+def test_metric_api_refreshes_expired_token(monkeypatch):
+    client = OpenAthleteClient("http://openathlete", "email", "password")
+    client.access = "expired"
+    calls = []
+    responses = [FakeResponse(401), FakeResponse(201)]
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return responses.pop(0)
+    monkeypatch.setattr(client.s, "request", request)
+    monkeypatch.setattr(client, "refresh", lambda: setattr(client, "access", "fresh"))
+    metric = {"type": "WEIGHT", "date": "2026-10-20", "value": 71}
+    client.upsert_metric(metric)
+    assert [c[2]["headers"]["Authorization"] for c in calls] == ["Bearer expired", "Bearer fresh"]
+    assert all(c[0:2] == ("POST", "http://openathlete/metric") and c[2]["json"] == metric for c in calls)
+
+
+def test_metric_api_obeys_retry_after_without_changing_payload(monkeypatch):
+    client = OpenAthleteClient("http://openathlete", "email", "password")
+    client.access = "valid"
+    limited = FakeResponse(429)
+    limited.headers = {"Retry-After": "3"}
+    responses = [limited, FakeResponse(201)]
+    payloads, sleeps = [], []
+    def request(method, url, **kwargs):
+        payloads.append(kwargs["json"])
+        return responses.pop(0)
+    monkeypatch.setattr(client.s, "request", request)
+    monkeypatch.setattr("app.openathlete.time.sleep", sleeps.append)
+    metric = {"type": "WEIGHT", "date": "2026-10-20", "value": 71}
+    client.upsert_metric(metric)
+    assert sleeps == [3.25] and payloads == [metric, metric]

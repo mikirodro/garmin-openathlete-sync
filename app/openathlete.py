@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import requests
+import time
 
 
 class OpenAthleteClient:
@@ -71,3 +72,30 @@ class OpenAthleteClient:
             r = upload()
         r.raise_for_status()
         return r.json()
+
+    def metric_request(self, method, path="/metric", **kwargs):
+        self.login()
+        def request():
+            for attempt in range(7):
+                response = self.s.request(method, self.base_url + path,
+                                          headers={"Authorization": "Bearer " + self.access},
+                                          timeout=30, **kwargs)
+                if response.status_code != 429 or attempt == 6:
+                    return response
+                try:
+                    delay = float(response.headers.get("Retry-After", 2 ** attempt))
+                except (TypeError, ValueError):
+                    delay = 2 ** attempt
+                time.sleep(min(60, max(1, delay)) + .25)
+        r = request()
+        if r.status_code == 401:
+            self.refresh()
+            r = request()
+        r.raise_for_status()
+        return r.json()
+
+    def metrics(self):
+        return self.metric_request("GET")
+
+    def upsert_metric(self, metric):
+        return self.metric_request("POST", json=metric)

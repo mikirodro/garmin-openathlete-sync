@@ -1,6 +1,6 @@
 # Garmin → OpenAthlete Sync
 
-Servicio Docker que descarga los FIT originales de Garmin Connect con `python-garminconnect` y los importa automáticamente en OpenAthlete. No requiere el conector oficial Garmin ni sus credenciales de desarrollador.
+Servicio Docker que importa automáticamente actividades FIT, métricas diarias de salud y entrenamientos programados de Garmin Connect en OpenAthlete mediante `python-garminconnect`. No requiere el conector oficial Garmin ni sus credenciales de desarrollador.
 
 ## Inicio
 
@@ -45,10 +45,60 @@ Se conserva `.env` y el montaje `./data:/data`. La reinicialización establece `
 | `SYNC_INTERVAL_SECONDS` | `86400` |
 | `GARMIN_ACTIVITY_LIMIT` | `100`, tamaño de página |
 | `GARMIN_ACTIVITY_LOOKBACK_DAYS` | `7` |
+| `GARMIN_HEALTH_LOOKBACK_DAYS` | `7` días completos, revisados en cada ciclo |
+| `GARMIN_PLANNED_DAYS` | `90` días desde hoy; máximo `366` |
 | `DATA_DIR` | `./data` en Python; `/data` en Docker |
-| `TZ` | `Europe/Madrid` en el ejemplo; filtrado en UTC |
+| `TZ` | `Europe/Madrid`; calendario local para salud y filtrado UTC para actividades |
 
-La dependencia usa servicios de Garmin Connect mediante tu cuenta; cambios de autenticación pueden exigir actualizarla. El proceso importa actividades, no sueño, HRV ni otras métricas diarias. OpenAthlete admite FIT de hasta 20 MB, 100000 registros y 1000 vueltas, y rechaza actividades multideporte. Una actividad diferente con la misma hora de inicio genera conflicto y se mantiene pendiente para revisión.
+La dependencia usa servicios de Garmin Connect mediante tu cuenta; cambios de autenticación pueden exigir actualizarla. El proceso importa actividades y métricas de salud diarias. OpenAthlete admite FIT de hasta 20 MB, 100000 registros y 1000 vueltas, y rechaza actividades multideporte. Una actividad diferente con la misma hora de inicio genera conflicto y se mantiene pendiente para revisión.
+
+## Salud diaria
+
+Cada ciclo sincroniza los últimos `GARMIN_HEALTH_LOOKBACK_DAYS` días completos (7 por defecto), según `TZ` (`Europe/Madrid` por defecto). Se excluye hoy para evitar resúmenes incompletos. Garmin aporta la fecha local de cada registro; el sueño y HRV usan su fecha de resumen nocturno.
+
+Incluye pulso en reposo, mínimo, máximo y media de muestras válidas; HRV nocturna y máximo de 5 minutos; peso, IMC, grasa, agua, músculo y hueso; sueño, fases, siestas y puntuación; estrés, carga/descarga de Body Battery, SpO₂, media diaria de muestras válidas de respiración, pasos, calorías, distancia y minutos activos. Solo se crean valores disponibles: ausencia o valores negativos de Garmin no se convierten en cero. OpenAthlete v1.2.0 rechaza valores cero en POST: los nuevos se omiten y cuentan como `zero_not_supported`, sin inventar valores positivos. Los registros propios existentes sí pueden actualizarse a cero mediante PATCH.
+
+Para varias mediciones de peso/composición en una fecha se usa la media aritmética por campo. La media de pulso usa las muestras positivas del día, excluyendo huecos. Los totales diarios, mínimos, máximos y resúmenes nocturnos mantienen su significado; no se mezclan con otras métricas. Se convierte gramos a kg, metros a km, sueño a horas y estrés/actividad a minutos.
+
+Se usa `POST /metric` con actualización por atleta, tipo y fecha. Las notas identifican el origen `Garmin Connect daily sync v1`. Los registros existentes de otro origen se respetan y se cuentan como `preserved_manual`. Las reejecuciones omiten valores idénticos y actualizan los importados que hayan cambiado; no duplican entradas. Una consulta o envío fallidos no bloquean las otras métricas, pero el proceso termina con error para permitir reintento. El siguiente ciclo vuelve a consultar su ventana; amplíala si una incidencia supera esos días.
+
+Primera carga de 30 días, sin volver a importar actividades:
+
+```sh
+docker compose stop garmin-openathlete-sync
+docker compose run --rm garmin-openathlete-sync python -m app --health-only --health-days 30
+docker compose up -d
+```
+
+El informe sin valores de salud se guarda en `/data/health/last-report.json`. No se archivan las muestras completas de pulso. Para repetir una carga parcial utiliza el mismo comando y ventana. Las respuestas HTTP 429 de OpenAthlete se reintentan respetando `Retry-After` (hasta 6 reintentos por petición). Se requiere una versión de OpenAthlete con `/metric` y los tipos correspondientes (validado con v1.2.0).
+
+## Entrenamientos programados
+
+Cada ciclo importa el calendario de Garmin desde hoy hasta `GARMIN_PLANNED_DAYS` días, incluidos bloques, repeticiones, descansos LAP, objetivos de ritmo (m/s), pulso, potencia, cadencia y cargas de fuerza (kg). Se conservan notas y nombres de ejercicios. Las fechas usan `TZ` y su cambio de horario; los objetivos de distancia usan metros y los tiempos segundos. Si Garmin no indica hora se usa el comienzo del día local, sin inventar una duración para sesiones abiertas o por repeticiones.
+
+Los meses consecutivos pueden repetir una sesión: se identifica por su ID de calendario, no por nombre ni por plantilla, de modo que una misma plantilla programada dos veces se importa dos veces. La relación con el evento de OpenAthlete y las huellas del contenido se guardan en la tabla `synced_workout` del SQLite existente, sin alterar el registro de actividades.
+
+Los cambios de Garmin actualizan la sesión correspondiente si mantiene su ID de calendario. Se respetan ediciones, eliminaciones realizadas en OpenAthlete y sesiones vinculadas a una actividad completada. Una referencia en la descripción permite recuperar una creación cuya respuesta se perdió sin duplicarla. No se borran automáticamente sesiones que desaparezcan de Garmin; una cancelación o reprogramación con ID nuevo requiere revisar la copia anterior en OpenAthlete.
+
+Las repeticiones anidadas se expanden conservando las series porque OpenAthlete admite un nivel; se respeta la omisión del último descanso. Los objetivos/condiciones no representables se conservan en notas y se enumeran en el informe. Los entrenamientos con segmentos de distintos deportes o repeticiones no soportadas se notifican como error y no se importan parcialmente. Los planes adaptativos solo aportan las sesiones que Garmin exponga en su calendario.
+
+Carga o comprobación manual, con el servicio detenido para no ejecutar dos importadores sobre el mismo SQLite:
+
+```sh
+docker compose stop garmin-openathlete-sync
+docker compose run --rm garmin-openathlete-sync python -m app --planned-only --planned-days 90
+docker compose up -d
+```
+
+`--planned-only` no importa actividades ni salud. El informe se guarda en `/data/workouts/last-report.json`. Los fallos de una etapa no impiden ejecutar las demás; los límites HTTP 429 de OpenAthlete se reintentan respetando `Retry-After`.
+
+Para importar sesiones planificadas de fechas pasadas, usa un intervalo inclusivo de hasta 366 días:
+
+```sh
+docker compose run --rm garmin-openathlete-sync python -m app --planned-only --planned-start 2026-09-21 --planned-end 2026-10-20
+```
+
+Detén antes el servicio y vuelve a arrancarlo al terminar, igual que en el ejemplo anterior. La carga histórica conserva los mismos controles de duplicados y ediciones manuales. Importa entrenamientos planificados como tales, sin crear actividades realizadas ni modificar las ya registradas. Garmin devuelve la definición actualmente disponible de cada entrenamiento; no garantiza recuperar versiones antiguas de plantillas editadas o borradas. El ciclo automático sigue mirando hacia el futuro.
 
 ## Desarrollo
 

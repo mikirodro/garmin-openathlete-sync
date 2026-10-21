@@ -1,12 +1,14 @@
 import argparse
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from .config import Config
 from .garmin import GarminClient
 from .openathlete import OpenAthleteClient
 from .state import State
+from .health import sync_health
+from .planned import sync_planned
 
 log = logging.getLogger("sync")
 
@@ -73,12 +75,59 @@ def run_once(c, g, o, state):
     return imported
 
 
+def run_cycle(c, g, o, state, health_days=None, health_only=False, planned_days=None):
+    failures = []
+    if health_only:
+        g.login()
+        o.login()
+    else:
+        try:
+            log.info("Sync: %s activities", run_once(c, g, o, state))
+        except Exception as error:
+            failures.append(error)
+            log.error("Activity cycle failed (%s)", type(error).__name__)
+    try:
+        if g.client is None:
+            g.login()
+        log.info("Health summary: %s", sync_health(c, g, o, days=health_days))
+    except Exception as error:
+        failures.append(error)
+        log.error("Health cycle failed (%s)", type(error).__name__)
+    if not health_only:
+        try:
+            if g.client is None:
+                g.login()
+            sync_planned(c, g, o, state, days=planned_days)
+        except Exception as error:
+            failures.append(error)
+            log.error("Scheduled workout cycle failed (%s)", type(error).__name__)
+    if failures:
+        raise RuntimeError(f"{len(failures)} sync stages failed")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Daily Garmin FIT import into OpenAthlete")
+    parser = argparse.ArgumentParser(description="Garmin activities, health and scheduled workouts into OpenAthlete")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--once", action="store_true", help="Sync once, exit nonzero on failures")
     mode.add_argument("--login", action="store_true", help="Initialize Garmin tokens with interactive MFA")
+    mode.add_argument("--health-only", action="store_true", help="Import health once without activities")
+    mode.add_argument("--planned-only", action="store_true", help="Import scheduled workouts once")
+    parser.add_argument("--health-days", type=int, help="Completed calendar days of health history")
+    parser.add_argument("--planned-days", type=int, help="Upcoming calendar days of scheduled workouts (1..366)")
+    parser.add_argument("--planned-start", type=date.fromisoformat, help="First calendar date, YYYY-MM-DD (with --planned-only)")
+    parser.add_argument("--planned-end", type=date.fromisoformat, help="Last calendar date, YYYY-MM-DD (inclusive)")
     args = parser.parse_args()
+    if args.health_days is not None and args.health_days <= 0:
+        parser.error("--health-days must be positive")
+    if args.planned_days is not None and not 1 <= args.planned_days <= 366:
+        parser.error("--planned-days must be 1..366")
+    if args.planned_start is not None or args.planned_end is not None:
+        if not args.planned_only or args.planned_start is None or args.planned_end is None:
+            parser.error("--planned-start and --planned-end require each other and --planned-only")
+        if args.planned_days is not None:
+            parser.error("Use a date range or --planned-days, not both")
+        if not 0 <= (args.planned_end - args.planned_start).days < 366:
+            parser.error("Planned date range must contain 1..366 days")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     c = Config.from_env()
     g = GarminClient(c.garmin_email, c.garmin_password, c.data_dir / "garmin", interactive=args.login)
@@ -88,12 +137,18 @@ def main():
         return
     state = State(c.data_dir / "state.sqlite3")
     o = OpenAthleteClient(c.openathlete_base_url, c.openathlete_email, c.openathlete_password)
-    if args.once:
-        log.info("Sync: %s activities", run_once(c, g, o, state))
+    if args.planned_only:
+        g.login()
+        o.login()
+        sync_planned(c, g, o, state, days=args.planned_days,
+                     start_date=args.planned_start, end_date=args.planned_end)
+        return
+    if args.once or args.health_only:
+        run_cycle(c, g, o, state, args.health_days, args.health_only, args.planned_days)
         return
     while True:
         try:
-            log.info("Sync: %s activities", run_once(c, g, o, state))
+            run_cycle(c, g, o, state, args.health_days, planned_days=args.planned_days)
         except Exception as error:
             # Do not log HTTP response bodies or authentication secrets.
             log.error("Sync cycle failed (%s); see activity errors above", type(error).__name__)

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.sync import run_once
+from app.sync import run_once, run_cycle
 
 
 class FakeGarmin:
@@ -123,3 +123,15 @@ def test_synced_activity_is_not_uploaded_again(tmp_path):
     assert run_once(config, FakeGarmin(), api, state) == 1
     assert run_once(config, FakeGarmin(), api, state) == 0
     assert len(api.imported_files) == 1
+
+
+def test_health_runs_even_if_activity_stage_fails(monkeypatch):
+    called = []
+    def fail(*args):
+        raise RuntimeError("Activity unavailable")
+    monkeypatch.setattr("app.sync.run_once", fail)
+    monkeypatch.setattr("app.sync.sync_health", lambda *args, **kwargs: called.append("health"))
+    monkeypatch.setattr("app.sync.sync_planned", lambda *args, **kwargs: called.append("planned"))
+    with pytest.raises(RuntimeError, match="1 sync stages failed"):
+        run_cycle(None, SimpleNamespace(client=object()), None, None)
+    assert called == ["health", "planned"]

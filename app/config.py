@@ -20,6 +20,8 @@ class Config:
     activity_limit: int
     lookback_days: int
     data_dir: Path
+    health_lookback_days: int = 7
+    planned_days: int = 90
 
     @classmethod
     def from_env(cls):
@@ -31,6 +33,8 @@ class Config:
             int(os.getenv("GARMIN_ACTIVITY_LIMIT", "100")),
             int(os.getenv("GARMIN_ACTIVITY_LOOKBACK_DAYS", "7")),
             Path(os.getenv("DATA_DIR", "./data")),
+            int(os.getenv("GARMIN_HEALTH_LOOKBACK_DAYS", "7")),
+            int(os.getenv("GARMIN_PLANNED_DAYS", "90")),
         )
         missing = [key for key, value in {
             "GARMIN_EMAIL": c.garmin_email, "GARMIN_PASSWORD": c.garmin_password,
@@ -42,7 +46,9 @@ class Config:
         url = urlsplit(c.openathlete_base_url)
         if url.scheme not in ("http", "https") or not url.netloc or url.query or url.fragment:
             raise ValueError("OPENATHLETE_BASE_URL must be an HTTP(S) API URL")
-        if c.sync_interval <= 0 or not 1 <= c.activity_limit <= 1000 or c.lookback_days <= 0:
+        if c.sync_interval <= 0 or not 1 <= c.activity_limit <= 1000 or c.lookback_days <= 0 or c.health_lookback_days <= 0:
             raise ValueError("Interval/lookback must be positive; page size must be 1..1000")
+        if not 1 <= c.planned_days <= 366:
+            raise ValueError("GARMIN_PLANNED_DAYS must be 1..366")
         c.data_dir.mkdir(parents=True, exist_ok=True)
         return c
