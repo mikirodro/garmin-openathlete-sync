@@ -75,6 +75,43 @@ ni impedir el envío de las demás métricas. Se requiere que OpenAthlete admita
 tipos (confirmados en la API desplegada). Añade una consulta Garmin por día;
 `--health-only --health-days N` incluye VO₂max en la ventana histórica solicitada.
 
+## FTP y otras métricas de rendimiento
+
+Cada ciclo sincroniza también el historial diario de FTP mediante
+`get_functional_threshold_power_range`, manteniendo carrera y ciclismo separados.
+Se utiliza la ventana `GARMIN_HEALTH_LOOKBACK_DAYS` y solo días completos, igual
+que en salud. Las peticiones históricas se dividen en intervalos de hasta 366 días,
+que es el límite de Garmin. Se conserva la fecha de medición `updatedDate` cuando
+coincide con el día de la serie, sin arrastrar valores antiguos a días sin datos.
+
+`FTP_CYCLING` se guarda en W. OpenAthlete presenta `FTP_RUNNING` en W/kg: los W de
+Garmin se dividen por el peso del mismo día (media de pesos Garmin, o una métrica
+`WEIGHT` existente en OpenAthlete si no hay peso Garmin). No se usa el peso actual
+para normalizar datos antiguos. Si falta un peso válido del mismo día, se omite
+esa medición y se cuenta como `missing_running_weight`. Algunas cuentas no tienen
+historial de FTP de carrera; una respuesta vacía no es un error.
+
+Se conservan las mismas reglas de origen, protección manual, actualización e
+idempotencia de las métricas de salud. Los fallos de una disciplina o bloque se
+registran y no impiden importar los demás. El informe sin valores personales se
+guarda en `/data/performance/last-report.json`. `--health-only` incluye la fase de
+FTP; para importar únicamente FTP sin actividades, sueño ni entrenamientos:
+
+```sh
+# Con el servicio periódico detenido para evitar ejecuciones simultáneas:
+docker compose run --rm garmin-openathlete-sync python -m app --performance-only --health-days 3650
+```
+
+La VAM de OpenAthlete (`VMA`, km/h) es velocidad aeróbica máxima. Las fuentes
+Garmin consultadas no aportan una VAM directa ni potencia crítica de carrera o
+ciclismo (`CRITICAL_POWER_RUNNING` / `CRITICAL_POWER_CYCLING`). Por eso el
+importador no crea esos tres tipos: el ritmo de umbral de lactato no es VAM,
+FTP no es potencia crítica, y VO₂max no permite deducir una VAM personal sin un
+modelo y supuestos adicionales. No se rellenan esos campos mediante equivalencias
+o estimaciones no solicitadas. Los tipos sin fuente se enumeran en el informe.
+
+Referencia Garmin: [FTP y TP por deporte](https://support.garmin.com/it-IT/?faq=xfzTjFVyStA0wdo2wFLFOA).
+
 Primera carga de 30 días, sin volver a importar actividades:
 
 ```sh
