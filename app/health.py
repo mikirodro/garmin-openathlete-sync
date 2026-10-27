@@ -84,6 +84,35 @@ def daily_metrics(day, stats, heart, hrv, sleep, weights, respiration=None):
             for kind, value in sorted(values.items())]
 
 
+def vo2_metrics(day, response):
+    """Import measured-day estimates only, keeping running and cycling separate."""
+    if response is None or response == {}:
+        return []
+    if not isinstance(response, list):
+        raise ValueError("Unexpected Garmin max metrics response")
+    values = {}
+    for entry in response:
+        if not isinstance(entry, dict):
+            raise ValueError("Unexpected Garmin max metrics entry")
+        for section, kind in (("generic", "VO2MAX"), ("cycling", "VO2MAX_CYCLING")):
+            record = entry.get(section)
+            if record is None:
+                continue
+            if not isinstance(record, dict):
+                raise ValueError("Unexpected Garmin VO2max record")
+            if record.get("calendarDate") != day:
+                continue
+            value = record.get("vo2MaxPreciseValue")
+            if not number(value, 0.000001):
+                value = record.get("vo2MaxValue")
+            if number(value, 0.000001):
+                values[kind] = round(value, 6)
+    return [{"type": kind, "date": day, "value": value,
+             "notes": SOURCE + "; Garmin measured-day VO2max estimate (ml/kg/min); "
+                      "precise value preferred; no carry-forward"}
+            for kind, value in sorted(values.items())]
+
+
 def sync_health(c, g, o, days=None, end=None):
     days = days if days is not None else c.health_lookback_days
     if days < 1:
@@ -109,9 +138,13 @@ def sync_health(c, g, o, days=None, end=None):
     for offset in range(days):
         day = (start + timedelta(days=offset)).isoformat()
         responses = {}
-        for method in ("get_stats", "get_heart_rates", "get_hrv_data", "get_sleep_data", "get_respiration_data"):
+        vo2 = []
+        for method in ("get_stats", "get_heart_rates", "get_hrv_data", "get_sleep_data", "get_respiration_data",
+                       "get_max_metrics"):
             try:
                 responses[method] = getattr(g.client, method)(day) or {}
+                if method == "get_max_metrics":
+                    vo2 = vo2_metrics(day, responses[method])
             except Exception as error:
                 # Failed fetches are not replaced with zero values; next cycle retries.
                 log.error("Health %s %s failed (%s)", day, method, type(error).__name__)
@@ -121,6 +154,7 @@ def sync_health(c, g, o, days=None, end=None):
         metrics = daily_metrics(day, responses["get_stats"], responses["get_heart_rates"],
                                 responses["get_hrv_data"], responses["get_sleep_data"], weights[day],
                                 responses["get_respiration_data"])
+        metrics.extend(vo2)
         for metric in metrics:
             key = (day, metric["type"])
             old = existing.get(key)

@@ -62,6 +62,19 @@ Para varias mediciones de peso/composición en una fecha se usa la media aritmé
 
 Se usa `POST /metric` con actualización por atleta, tipo y fecha. Las notas identifican el origen `Garmin Connect daily sync v1`. Los registros existentes de otro origen se respetan y se cuentan como `preserved_manual`. Las reejecuciones omiten valores idénticos y actualizan los importados que hayan cambiado; no duplican entradas. Una consulta o envío fallidos no bloquean las otras métricas, pero el proceso termina con error para permitir reintento. El siguiente ciclo vuelve a consultar su ventana; amplíala si una incidencia supera esos días.
 
+También se consulta `get_max_metrics(fecha)` para importar VO₂max de carrera
+(`VO2MAX`, sección `generic` de Garmin) y ciclismo (`VO2MAX_CYCLING`) por separado,
+en ml/kg/min, sin conversiones. Se prefiere `vo2MaxPreciseValue` y, si no es válido,
+se utiliza `vo2MaxValue`. Solo se importan estimaciones positivas y finitas cuya
+`calendarDate` coincida con el día consultado: no se arrastra la última estimación
+a días sin medición ni se mezclan las dos disciplinas. No todos los días o
+dispositivos aportan estas métricas. Se aplican los mismos controles de protección
+manual, actualización e idempotencia del resto de salud. Una consulta o estructura
+de respuesta inesperada se registra como fallo sin sobrescribir valores anteriores
+ni impedir el envío de las demás métricas. Se requiere que OpenAthlete admita ambos
+tipos (confirmados en la API desplegada). Añade una consulta Garmin por día;
+`--health-only --health-days N` incluye VO₂max en la ventana histórica solicitada.
+
 Primera carga de 30 días, sin volver a importar actividades:
 
 ```sh

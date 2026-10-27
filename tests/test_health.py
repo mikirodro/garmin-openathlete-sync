@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.health import SOURCE, daily_metrics, sync_health
+from app.health import SOURCE, daily_metrics, sync_health, vo2_metrics
 
 
 def test_daily_means_units_missing_values_and_semantics():
@@ -48,6 +48,8 @@ class Garmin:
         return {}
     def get_respiration_data(self, day):
         return {}
+    def get_max_metrics(self, day):
+        return []
 
 
 class API:
@@ -101,3 +103,99 @@ def test_new_zeros_are_reported_not_sent_to_positive_only_api(tmp_path, monkeypa
                          SimpleNamespace(client=garmin), api, end=date(2026, 10, 20))
     assert report["zero_not_supported"] == 1
     assert all(m["value"] > 0 for m in api.writes)
+
+
+def test_vo2_separate_sports_precision_and_measured_date():
+    day = "2026-10-20"
+    rows = vo2_metrics(day, [{
+        "generic": {"calendarDate": day, "vo2MaxValue": 50, "vo2MaxPreciseValue": 50.1234567},
+        "cycling": {"calendarDate": day, "vo2MaxValue": 55},
+    }, {"generic": {"calendarDate": "2026-10-19", "vo2MaxValue": 60}}])
+    assert {r["type"]: r["value"] for r in rows} == {"VO2MAX": 50.123457, "VO2MAX_CYCLING": 55}
+    assert all(r["date"] == day and r["notes"].startswith(SOURCE) for r in rows)
+
+
+@pytest.mark.parametrize("value", [None, True, False, 0, -1, float("nan"), float("inf"), "50"])
+def test_vo2_invalid_values_and_rounded_fallback(value):
+    record = {"calendarDate": "2026-10-20", "vo2MaxPreciseValue": value, "vo2MaxValue": value}
+    assert vo2_metrics("2026-10-20", [{"generic": record}]) == []
+    record["vo2MaxValue"] = 49.5
+    assert vo2_metrics("2026-10-20", [{"generic": record}])[0]["value"] == 49.5
+
+
+@pytest.mark.parametrize("response", [None, {}, [], [{"generic": None, "cycling": None}],
+                                    [{"generic": {"vo2MaxValue": 50}}]])
+def test_vo2_missing_data_does_not_invent_measurements(response):
+    assert vo2_metrics("2026-10-20", response) == []
+
+
+@pytest.mark.parametrize("response", [{"unexpected": 1}, "bad", [None], [{"generic": []}]])
+def test_vo2_unexpected_response_is_reported(response):
+    with pytest.raises(ValueError, match="Unexpected Garmin"):
+        vo2_metrics("2026-10-20", response)
+
+
+def test_vo2_sync_manual_protection_updates_and_idempotency(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.health.time.sleep", lambda _: None)
+    c = SimpleNamespace(health_lookback_days=1, data_dir=tmp_path)
+    garmin, api = Garmin(), API()
+    day = "2026-10-20"
+    garmin.get_max_metrics = lambda requested: [{
+        "generic": {"calendarDate": requested, "vo2MaxPreciseValue": 51.23},
+        "cycling": {"calendarDate": requested, "vo2MaxValue": 55},
+    }]
+    api.rows.extend([
+        {"date": day, "type": "VO2MAX", "value": 50, "notes": SOURCE},
+        {"date": day, "type": "VO2MAX_CYCLING", "value": 54, "notes": "Manual"},
+    ])
+    report = sync_health(c, SimpleNamespace(client=garmin), api, end=date(2026, 10, 20))
+    assert report["failures"] == 0 and report["preserved_manual"] == 1
+    assert report["types"]["VO2MAX"] == 1
+    assert next(r for r in api.rows if r["type"] == "VO2MAX")["value"] == 51.23
+    assert next(r for r in api.rows if r["type"] == "VO2MAX_CYCLING")["value"] == 54
+    count = len(api.writes)
+    report = sync_health(c, SimpleNamespace(client=garmin), api, end=date(2026, 10, 20))
+    assert len(api.writes) == count and report["written"] == 0
+
+
+def test_vo2_creates_both_sports_on_their_measured_days(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.health.time.sleep", lambda _: None)
+    garmin, api = Garmin(), API()
+    requested = []
+    def fetch(day):
+        requested.append(day)
+        if day == "2026-10-19":
+            return [{"generic": {"calendarDate": day, "vo2MaxValue": 50},
+                     "cycling": {"calendarDate": day, "vo2MaxPreciseValue": 55.123}}]
+        # A stale estimate must not be copied to the next day.
+        return [{"generic": {"calendarDate": "2026-10-19", "vo2MaxValue": 50}}]
+    garmin.get_max_metrics = fetch
+    c = SimpleNamespace(health_lookback_days=2, data_dir=tmp_path)
+    report = sync_health(c, SimpleNamespace(client=garmin), api, end=date(2026, 10, 20))
+    assert requested == ["2026-10-19", "2026-10-20"]
+    rows = [r for r in api.writes if r["type"].startswith("VO2MAX")]
+    assert {r["type"]: r["value"] for r in rows} == {"VO2MAX": 50, "VO2MAX_CYCLING": 55.123}
+    assert all(r["date"] == "2026-10-19" for r in rows)
+    assert report["types"]["VO2MAX"] == report["types"]["VO2MAX_CYCLING"] == 1
+    count = len(api.writes)
+    repeat = sync_health(c, SimpleNamespace(client=garmin), api, end=date(2026, 10, 20))
+    assert len(api.writes) == count and repeat["written"] == 0
+
+
+@pytest.mark.parametrize("malformed", [False, True])
+def test_vo2_failure_preserves_existing_and_continues_other_metrics(tmp_path, monkeypatch, malformed):
+    monkeypatch.setattr("app.health.time.sleep", lambda _: None)
+    garmin, api = Garmin(), API()
+    def fetch(day):
+        if malformed:
+            return [{"cycling": "invalid"}]
+        raise RuntimeError("Unavailable")
+    garmin.get_max_metrics = fetch
+    old = {"date": "2026-10-20", "type": "VO2MAX", "value": 50, "notes": SOURCE}
+    api.rows.append(old.copy())
+    with pytest.raises(RuntimeError, match="1 failures"):
+        sync_health(SimpleNamespace(health_lookback_days=1, data_dir=tmp_path),
+                    SimpleNamespace(client=garmin), api, end=date(2026, 10, 20))
+    assert old in api.rows
+    assert not any(r["type"].startswith("VO2MAX") for r in api.writes)
+    assert any(r["type"] == "DAILY_STEPS" for r in api.writes)
