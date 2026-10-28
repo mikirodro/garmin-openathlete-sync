@@ -8,6 +8,7 @@ services:
     environment:
       SYNC_INTERVAL_SECONDS: ${SYNC_INTERVAL_SECONDS:-86400}
       DATA_DIR: /data
+      ALLOW_INSECURE_HTTP: ${ALLOW_INSECURE_HTTP:-false}
     volumes:
       - ./data:/data
     networks:

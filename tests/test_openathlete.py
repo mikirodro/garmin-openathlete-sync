@@ -45,7 +45,7 @@ def test_import_fit_uploads_file_and_retries_after_refresh(
     fit_path = tmp_path / "activity.fit"
     fit_path.write_bytes(b"synthetic FIT")
 
-    client = OpenAthleteClient("http://openathlete", "email", "password")
+    client = OpenAthleteClient("https://openathlete", "email", "password")
     client.access = "expired"
     session = FakeSession()
     client.s = session
@@ -62,7 +62,7 @@ def test_import_fit_uploads_file_and_retries_after_refresh(
         b"synthetic FIT",
         b"synthetic FIT",
     ]
-    assert all(call["url"] == "http://openathlete/activity-import/fit" for call in session.calls)
+    assert all(call["url"] == "https://openathlete/activity-import/fit" for call in session.calls)
     assert all(call["filename"] == "activity.fit" for call in session.calls)
     assert all(
         call["mimetype"] == "application/vnd.garmin.fit"
@@ -73,7 +73,7 @@ def test_import_fit_uploads_file_and_retries_after_refresh(
 
 
 def test_metric_api_refreshes_expired_token(monkeypatch):
-    client = OpenAthleteClient("http://openathlete", "email", "password")
+    client = OpenAthleteClient("https://openathlete", "email", "password")
     client.access = "expired"
     calls = []
     responses = [FakeResponse(401), FakeResponse(201)]
@@ -85,11 +85,11 @@ def test_metric_api_refreshes_expired_token(monkeypatch):
     metric = {"type": "WEIGHT", "date": "2026-10-20", "value": 71}
     client.upsert_metric(metric)
     assert [c[2]["headers"]["Authorization"] for c in calls] == ["Bearer expired", "Bearer fresh"]
-    assert all(c[0:2] == ("POST", "http://openathlete/metric") and c[2]["json"] == metric for c in calls)
+    assert all(c[0:2] == ("POST", "https://openathlete/metric") and c[2]["json"] == metric for c in calls)
 
 
 def test_metric_api_obeys_retry_after_without_changing_payload(monkeypatch):
-    client = OpenAthleteClient("http://openathlete", "email", "password")
+    client = OpenAthleteClient("https://openathlete", "email", "password")
     client.access = "valid"
     limited = FakeResponse(429)
     limited.headers = {"Retry-After": "3"}

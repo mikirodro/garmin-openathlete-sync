@@ -3,15 +3,24 @@ from pathlib import Path
 import requests
 import time
 
+from .config import validate_base_url
+
 
 class OpenAthleteClient:
-    def __init__(self, base_url, email, password):
+    def __init__(self, base_url, email, password, *, allow_insecure_http=False):
+        validate_base_url(base_url, allow_insecure_http)
         self.base_url = base_url.rstrip("/")
         self.email = email
         self.password = password
         self.s = requests.Session()
         self.access = ""
         self.refresh_token = ""
+
+    @staticmethod
+    def _check_response(response):
+        if 300 <= response.status_code < 400:
+            raise requests.HTTPError("API redirects are disabled", response=response)
+        response.raise_for_status()
 
     def login(self):
         if self.access:
@@ -22,9 +31,10 @@ class OpenAthleteClient:
         r = self.s.post(
             self.base_url + "/auth/login",
             json={"email": self.email, "password": self.password},
+            allow_redirects=False,
             timeout=30,
         )
-        r.raise_for_status()
+        self._check_response(r)
         data = r.json()
         self.access = data["accessToken"]
         self.refresh_token = data["refreshToken"]
@@ -36,14 +46,17 @@ class OpenAthleteClient:
         r = self.s.post(
             self.base_url + "/auth/refresh-token",
             json={"refreshToken": self.refresh_token},
+            allow_redirects=False,
             timeout=30,
         )
+        if 300 <= r.status_code < 400:
+            self._check_response(r)
         if r.status_code >= 400:
             self.access = ""
             self.refresh_token = ""
             self._login()
             return
-        r.raise_for_status()
+        self._check_response(r)
         data = r.json()
         self.access = data["accessToken"]
         self.refresh_token = data["refreshToken"]
@@ -62,6 +75,7 @@ class OpenAthleteClient:
                         )
                     },
                     headers={"Authorization": "Bearer " + self.access},
+                    allow_redirects=False,
                     timeout=120,
                 )
 
@@ -70,7 +84,7 @@ class OpenAthleteClient:
         if r.status_code == 401:
             self.refresh()
             r = upload()
-        r.raise_for_status()
+        self._check_response(r)
         return r.json()
 
     def metric_request(self, method, path="/metric", **kwargs):
@@ -79,7 +93,7 @@ class OpenAthleteClient:
             for attempt in range(7):
                 response = self.s.request(method, self.base_url + path,
                                           headers={"Authorization": "Bearer " + self.access},
-                                          timeout=30, **kwargs)
+                                          allow_redirects=False, timeout=30, **kwargs)
                 if response.status_code != 429 or attempt == 6:
                     return response
                 try:
@@ -91,7 +105,7 @@ class OpenAthleteClient:
         if r.status_code == 401:
             self.refresh()
             r = request()
-        r.raise_for_status()
+        self._check_response(r)
         return r.json()
 
     def metrics(self):

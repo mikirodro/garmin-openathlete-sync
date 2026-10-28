@@ -7,6 +7,8 @@ def environment(monkeypatch, tmp_path):
         monkeypatch.setenv(key, "test")
         monkeypatch.delenv(key + "_FILE", raising=False)
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("OPENATHLETE_BASE_URL", "https://example.invalid")
+    monkeypatch.delenv("ALLOW_INSECURE_HTTP", raising=False)
     monkeypatch.delenv("SYNC_INTERVAL_SECONDS", raising=False)
 
 

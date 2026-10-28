@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 import time
 from datetime import date, datetime, timedelta, timezone
 
@@ -7,6 +8,7 @@ from .config import Config
 from .garmin import GarminClient
 from .openathlete import OpenAthleteClient
 from .state import State
+from .security import single_instance
 from .health import sync_health
 from .performance import sync_performance
 from .planned import sync_planned
@@ -138,13 +140,20 @@ def main():
         if not 0 <= (args.planned_end - args.planned_start).days < 366:
             parser.error("Planned date range must contain 1..366 days")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    os.umask(0o077)
     c = Config.from_env()
+    with single_instance(c.data_dir):
+        return run_configured(c, args)
+
+
+def run_configured(c, args):
     g = GarminClient(c.garmin_email, c.garmin_password, c.data_dir / "garmin", interactive=args.login)
     if args.login:
         g.login()
         log.info("Garmin tokens initialized")
         return
-    o = OpenAthleteClient(c.openathlete_base_url, c.openathlete_email, c.openathlete_password)
+    o = OpenAthleteClient(c.openathlete_base_url, c.openathlete_email, c.openathlete_password,
+                          allow_insecure_http=getattr(c, "allow_insecure_http", False))
     if args.performance_only:
         g.login()
         o.login()

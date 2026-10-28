@@ -10,7 +10,9 @@ de la API ni depender de la dirección IP del host.
    `openathlete_openathlete-network`; si tu despliegue usa otro nombre, ajusta
    `networks.openathlete.name` en `compose.yaml`.
 2. Copia `.env.example` a `.env` y configura las credenciales.
-3. Usa `OPENATHLETE_BASE_URL=http://api:3000`.
+3. En esta red Docker local, usa `OPENATHLETE_BASE_URL=http://api:3000` y
+   `ALLOW_INSECURE_HTTP=true` si aceptas el transporte sin cifrar. Para otros
+   destinos usa HTTPS. La URL debe ser definitiva: se rechazan redirecciones.
 4. Prepara los datos persistentes y protege las credenciales:
 
        mkdir -p data
@@ -59,3 +61,20 @@ Los FIT originales se conservan para revisión.
 `FIT_DUPLICATE_TIME` indica que otra actividad del mismo atleta empieza a la
 misma hora. La API rechaza la importación y el archivo queda pendiente; revisa
 ambas actividades antes de decidir cómo resolverlo.
+
+## Actualización de seguridad
+
+Antes de actualizar, conserva una copia privada de código, configuración e imagen
+anterior. Para el despliegue local HTTP existente, añade explícitamente
+`ALLOW_INSECURE_HTTP=true` a `.env` antes de recrear el contenedor; no copies
+`.env.example` sobre tus credenciales. Con HTTPS conserva el valor `false`.
+
+Valida con `docker compose config --quiet` (sin volcar secretos), construye la
+imagen y recrea únicamente este servicio. Comprueba su estado y el resultado
+del ciclo normal; no ejecutes `--once` con el servicio activo. Las ejecuciones
+manuales concurrentes se rechazan antes de contactar las cuentas.
+
+Para revertir, restaura código/configuración y la imagen anterior y recrea solo
+el importador. No borres SQLite ni los tokens; este cambio no migra su esquema.
+La carpeta DATA_DIR pasa a 0700 y los nuevos archivos son privados. La reversión
+no requiere ampliar esos permisos. No se modifican recursivamente archivos antiguos.

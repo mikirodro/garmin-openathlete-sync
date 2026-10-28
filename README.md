@@ -5,7 +5,7 @@ Servicio Docker que importa automáticamente actividades FIT, métricas diarias 
 ## Inicio
 
 1. Copia `.env.example` a `.env` y completa las credenciales de ambas cuentas. La cuenta OpenAthlete debe tener perfil de atleta.
-2. Arranca OpenAthlete y configura `OPENATHLETE_BASE_URL=http://api:3000`. El Compose comparte su red `openathlete_openathlete-network`; ajusta el nombre si tu despliegue usa otro. Consulta [DEPLOYMENT.md](DEPLOYMENT.md) para los requisitos y la operación. `localhost` dentro del contenedor apunta al propio contenedor.
+2. Arranca OpenAthlete y configura `OPENATHLETE_BASE_URL=http://api:3000` y `ALLOW_INSECURE_HTTP=true` únicamente si confías en esa red local Docker. Para conexiones remotas usa HTTPS; es obligatorio por defecto. El Compose comparte su red `openathlete_openathlete-network`; ajusta el nombre si tu despliegue usa otro. Consulta [DEPLOYMENT.md](DEPLOYMENT.md) para los requisitos y la operación. `localhost` dentro del contenedor apunta al propio contenedor.
 3. Ejecuta:
 
 ```sh
@@ -41,7 +41,8 @@ Se conserva `.env` y el montaje `./data:/data`. La reinicialización establece `
 | `GARMIN_EMAIL`, `GARMIN_PASSWORD` | Cuenta Garmin Connect |
 | `OPENATHLETE_EMAIL`, `OPENATHLETE_PASSWORD` | Cuenta OpenAthlete |
 | `GARMIN_PASSWORD_FILE`, `OPENATHLETE_PASSWORD_FILE` | Archivos de secretos; prevalecen sobre la contraseña en variable |
-| `OPENATHLETE_BASE_URL` | URL raíz de la API, incluido `/api` si lo requiere el proxy |
+| `OPENATHLETE_BASE_URL` | Obligatoria: URL final de la API, incluido `/api` si lo requiere el proxy; no se siguen redirecciones |
+| `ALLOW_INSECURE_HTTP` | `false`; `true` solo para permitir HTTP en una red local confiable |
 | `SYNC_INTERVAL_SECONDS` | `86400` |
 | `GARMIN_ACTIVITY_LIMIT` | `100`, tamaño de página |
 | `GARMIN_ACTIVITY_LOOKBACK_DAYS` | `7` |
@@ -168,3 +169,14 @@ python -m pip install -e ../python-garminconnect
 ```
 
 En ejecución local, exporta las variables del entorno; Python no carga `.env` automáticamente. Docker Compose sí lo carga. Las pruebas no contactan cuentas reales.
+
+## Seguridad y contribuciones
+
+El programa restringe el acceso a DATA_DIR y crea archivos nuevos con umask 077.
+Todos los modos mantienen un bloqueo exclusivo del directorio: detén el servicio
+antes de un comando manual. El bloqueo se libera al terminar; no borres su archivo.
+Se requiere Linux (Docker en Windows/macOS también ejecuta Linux).
+
+Consulta [SECURITY.md](SECURITY.md) para credenciales y reportes privados,
+[CONTRIBUTING.md](CONTRIBUTING.md) para forks y propuestas de cambios y
+[LICENSE](LICENSE) para la licencia MIT.
