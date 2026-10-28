@@ -115,7 +115,7 @@ def test_lock_does_not_follow_symlinks(tmp_path):
     assert target.read_text() == 'unchanged'
 
 
-@pytest.mark.parametrize('mode', ['--login', '--once', '--health-only', '--performance-only', '--planned-only'])
+@pytest.mark.parametrize('mode', ['--login', '--once', '--health-only', '--performance-only', '--planned-only', '--rpe-backfill'])
 def test_cli_sets_private_creation_mask_and_locks_before_clients(monkeypatch, tmp_path, mode):
     import app.sync as sync
     from contextlib import contextmanager

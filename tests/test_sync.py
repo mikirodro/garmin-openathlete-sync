@@ -130,24 +130,26 @@ def test_health_runs_even_if_activity_stage_fails(monkeypatch):
     def fail(*args):
         raise RuntimeError("Activity unavailable")
     monkeypatch.setattr("app.sync.run_once", fail)
+    monkeypatch.setattr("app.sync.sync_rpe", lambda *args, **kwargs: called.append("rpe"))
     monkeypatch.setattr("app.sync.sync_health", lambda *args, **kwargs: called.append("health"))
     monkeypatch.setattr("app.sync.sync_performance", lambda *args, **kwargs: called.append("performance"))
     monkeypatch.setattr("app.sync.sync_planned", lambda *args, **kwargs: called.append("planned"))
     with pytest.raises(RuntimeError, match="1 sync stages failed"):
-        run_cycle(None, SimpleNamespace(client=object()), None, None)
-    assert called == ["health", "performance", "planned"]
+        run_cycle(None, SimpleNamespace(client=object()), SimpleNamespace(login=lambda: None), None)
+    assert called == ["rpe", "health", "performance", "planned"]
 
 
 def test_ftp_failure_does_not_block_planned_workouts(monkeypatch):
     called = []
     monkeypatch.setattr("app.sync.run_once", lambda *args: 0)
+    monkeypatch.setattr("app.sync.sync_rpe", lambda *args, **kwargs: None)
     monkeypatch.setattr("app.sync.sync_health", lambda *args, **kwargs: None)
     def fail(*args, **kwargs):
         raise RuntimeError("FTP unavailable")
     monkeypatch.setattr("app.sync.sync_performance", fail)
     monkeypatch.setattr("app.sync.sync_planned", lambda *args, **kwargs: called.append("planned"))
     with pytest.raises(RuntimeError, match="1 sync stages failed"):
-        run_cycle(None, SimpleNamespace(client=object()), None, None)
+        run_cycle(None, SimpleNamespace(client=object()), SimpleNamespace(login=lambda: None), None)
     assert called == ["planned"]
 
 
@@ -165,3 +167,34 @@ def test_performance_only_cli_avoids_other_imports_and_sqlite(tmp_path, monkeypa
     monkeypatch.setattr("sys.argv", ["app", "--performance-only", "--health-days", "1000"])
     main()
     assert calls == [{"days": 1000}]
+
+
+def test_rpe_failure_does_not_block_other_stages(monkeypatch):
+    called = []
+    monkeypatch.setattr("app.sync.run_once", lambda *args: 0)
+    def fail(*args, **kwargs):
+        raise RuntimeError("RPE unavailable")
+    monkeypatch.setattr("app.sync.sync_rpe", fail)
+    monkeypatch.setattr("app.sync.sync_health", lambda *args, **kwargs: called.append("health"))
+    monkeypatch.setattr("app.sync.sync_performance", lambda *args, **kwargs: called.append("performance"))
+    monkeypatch.setattr("app.sync.sync_planned", lambda *args, **kwargs: called.append("planned"))
+    with pytest.raises(RuntimeError, match="1 sync stages failed"):
+        run_cycle(None, SimpleNamespace(client=object()), SimpleNamespace(login=lambda: None), None)
+    assert called == ["health", "performance", "planned"]
+
+
+def test_rpe_backfill_cli_only_runs_rpe(tmp_path, monkeypatch):
+    from app.sync import main
+    config = SimpleNamespace(garmin_email="", garmin_password="", data_dir=tmp_path,
+                             openathlete_base_url="", openathlete_email="", openathlete_password="")
+    monkeypatch.setattr("app.sync.Config.from_env", lambda: config)
+    client = SimpleNamespace(login=lambda: None)
+    monkeypatch.setattr("app.sync.GarminClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr("app.sync.OpenAthleteClient", lambda *args, **kwargs: client)
+    calls = []
+    monkeypatch.setattr("app.sync.sync_rpe", lambda *args, **kwargs: calls.append(kwargs))
+    for function in ("run_once", "sync_health", "sync_performance", "sync_planned"):
+        monkeypatch.setattr("app.sync." + function, lambda *args, **kwargs: pytest.fail("Unexpected sync stage"))
+    monkeypatch.setattr("sys.argv", ["app", "--rpe-backfill"])
+    main()
+    assert calls == [{"backfill": True}]

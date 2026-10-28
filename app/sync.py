@@ -12,6 +12,7 @@ from .security import single_instance
 from .health import sync_health
 from .performance import sync_performance
 from .planned import sync_planned
+from .rpe import sync_rpe
 
 log = logging.getLogger("sync")
 
@@ -89,6 +90,15 @@ def run_cycle(c, g, o, state, health_days=None, health_only=False, planned_days=
         except Exception as error:
             failures.append(error)
             log.error("Activity cycle failed (%s)", type(error).__name__)
+    if not health_only:
+        try:
+            if g.client is None:
+                g.login()
+            o.login()
+            sync_rpe(c, g, o, state)
+        except Exception as error:
+            failures.append(error)
+            log.error("RPE cycle failed (%s)", type(error).__name__)
     try:
         if g.client is None:
             g.login()
@@ -122,6 +132,7 @@ def main():
     mode.add_argument("--login", action="store_true", help="Initialize Garmin tokens with interactive MFA")
     mode.add_argument("--health-only", action="store_true", help="Import health once without activities")
     mode.add_argument("--performance-only", action="store_true", help="Import FTP history only; window from --health-days")
+    mode.add_argument("--rpe-backfill", action="store_true", help="Backfill RPE for all mapped activities, resume safely")
     mode.add_argument("--planned-only", action="store_true", help="Import scheduled workouts once")
     parser.add_argument("--health-days", type=int, help="Completed calendar days of health history")
     parser.add_argument("--planned-days", type=int, help="Upcoming calendar days of scheduled workouts (1..366)")
@@ -160,6 +171,11 @@ def run_configured(c, args):
         sync_performance(c, g, o, days=args.health_days)
         return
     state = State(c.data_dir / "state.sqlite3")
+    if args.rpe_backfill:
+        g.login()
+        o.login()
+        sync_rpe(c, g, o, state, backfill=True)
+        return
     if args.planned_only:
         g.login()
         o.login()

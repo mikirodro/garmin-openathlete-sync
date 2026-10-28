@@ -69,3 +69,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local RPE backups may contain personal database exports.
+/rpe-backup-*/

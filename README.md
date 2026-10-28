@@ -53,6 +53,38 @@ Se conserva `.env` y el montaje `./data:/data`. La reinicialización establece `
 
 La dependencia usa servicios de Garmin Connect mediante tu cuenta; cambios de autenticación pueden exigir actualizarla. El proceso importa actividades y métricas de salud diarias. OpenAthlete admite FIT de hasta 20 MB, 100000 registros y 1000 vueltas, y rechaza actividades multideporte. Una actividad diferente con la misma hora de inicio genera conflicto y se mantiene pendiente para revisión.
 
+## Esfuerzo percibido (RPE)
+
+Cada ciclo normal sincroniza la autoevaluación `summaryDTO.directWorkoutRpe`
+de las actividades Garmin ya vinculadas a eventos OpenAthlete por SQLite.
+Se convierte la escala Garmin 0..100 a la escala OpenAthlete 0..1, incluyendo
+cero. Los valores ausentes no borran el RPE existente; los inválidos se rechazan.
+Solo se actualizan eventos de tipo `ACTIVITY` y se verifica el resultado del PATCH.
+
+Un RPE ya existente no se reclama como propio, aunque coincida con Garmin.
+Las modificaciones y borrados manuales de un RPE importado se protegen con un
+bloqueo persistente por actividad/evento: no se vuelven a sobrescribir. No hay
+un comando automático para eliminar esa protección. El historial de escrituras,
+comprobaciones y protecciones se guarda en tablas adicionales del SQLite existente.
+
+Además de la ventana de actividades recientes, cada ciclo revisa hasta 20
+candidatos antiguos, priorizando los menos recientemente comprobados. Para
+recorrer el histórico aún no comprobado, con el servicio detenido:
+
+```sh
+docker compose stop garmin-openathlete-sync
+docker compose run --rm garmin-openathlete-sync python -m app --rpe-backfill
+docker compose up -d
+```
+
+El backfill solo procesa actividades con correspondencia en SQLite que todavía
+no se hayan comprobado; no vuelve a recorrer las completadas al reanudar. Las
+actividades sin RPE se consideran comprobadas y pueden revisarse después por la
+rotación periódica. Ante limitación 429 se interrumpe el escaneo y los pendientes
+siguen disponibles para otro intento. El fallo de RPE no impide las demás fases,
+pero el ciclo informa de error. `--health-only`, `--performance-only` y
+`--planned-only` no ejecutan RPE.
+
 ## Salud diaria
 
 Cada ciclo sincroniza los últimos `GARMIN_HEALTH_LOOKBACK_DAYS` días completos (7 por defecto), según `TZ` (`Europe/Madrid` por defecto). Se excluye hoy para evitar resúmenes incompletos. Garmin aporta la fecha local de cada registro; el sueño y HRV usan su fecha de resumen nocturno.
