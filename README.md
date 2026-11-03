@@ -46,7 +46,7 @@ Se conserva `.env` y el montaje `./data:/data`. La reinicialización establece `
 | `SYNC_INTERVAL_SECONDS` | `86400` |
 | `GARMIN_ACTIVITY_LIMIT` | `100`, tamaño de página |
 | `GARMIN_ACTIVITY_LOOKBACK_DAYS` | `7` |
-| `GARMIN_HEALTH_LOOKBACK_DAYS` | `7` días completos, revisados en cada ciclo |
+| `GARMIN_HEALTH_LOOKBACK_DAYS` | `7` días completos anteriores; Health añade hoy en cada ciclo |
 | `GARMIN_PLANNED_DAYS` | `90` días desde hoy; máximo `366` |
 | `DATA_DIR` | `./data` en Python; `/data` en Docker |
 | `TZ` | `Europe/Madrid`; calendario local para salud y filtrado UTC para actividades |
@@ -87,7 +87,7 @@ pero el ciclo informa de error. `--health-only`, `--performance-only` y
 
 ## Salud diaria
 
-Cada ciclo sincroniza los últimos `GARMIN_HEALTH_LOOKBACK_DAYS` días completos (7 por defecto), según `TZ` (`Europe/Madrid` por defecto). Se excluye hoy para evitar resúmenes incompletos. Garmin aporta la fecha local de cada registro; el sueño y HRV usan su fecha de resumen nocturno.
+Cada ciclo sincroniza hoy y los últimos `GARMIN_HEALTH_LOOKBACK_DAYS` días completos (7 por defecto), según `TZ` (`Europe/Madrid` por defecto). Las métricas de hoy son provisionales y se actualizan en cada ciclo con los datos disponibles; la frecuencia depende de `SYNC_INTERVAL_SECONDS`, no es tiempo real. Garmin aporta la fecha local de cada registro; el sueño y HRV usan su fecha de resumen nocturno. `--health-days N` conserva N días completos anteriores y añade hoy para salud; la fase FTP mantiene únicamente los N días completos.
 
 Incluye pulso en reposo, mínimo, máximo y media de muestras válidas; HRV nocturna y máximo de 5 minutos; peso, IMC, grasa, agua, músculo y hueso; sueño, fases, siestas y puntuación; estrés, carga/descarga de Body Battery, SpO₂, media diaria de muestras válidas de respiración, pasos, calorías, distancia y minutos activos. Solo se crean valores disponibles: ausencia o valores negativos de Garmin no se convierten en cero. OpenAthlete v1.2.0 rechaza valores cero en POST: los nuevos se omiten y cuentan como `zero_not_supported`, sin inventar valores positivos. Los registros propios existentes sí pueden actualizarse a cero mediante PATCH.
 
@@ -112,8 +112,8 @@ tipos (confirmados en la API desplegada). Añade una consulta Garmin por día;
 
 Cada ciclo sincroniza también el historial diario de FTP mediante
 `get_functional_threshold_power_range`, manteniendo carrera y ciclismo separados.
-Se utiliza la ventana `GARMIN_HEALTH_LOOKBACK_DAYS` y solo días completos, igual
-que en salud. Las peticiones históricas se dividen en intervalos de hasta 366 días,
+Se utiliza la ventana `GARMIN_HEALTH_LOOKBACK_DAYS` y solo días completos;
+a diferencia de salud, FTP no incluye hoy. Las peticiones históricas se dividen en intervalos de hasta 366 días,
 que es el límite de Garmin. Se conserva la fecha de medición `updatedDate` cuando
 coincide con el día de la serie, sin arrastrar valores antiguos a días sin datos.
 

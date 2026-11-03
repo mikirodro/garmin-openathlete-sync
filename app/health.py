@@ -117,8 +117,11 @@ def sync_health(c, g, o, days=None, end=None):
     days = days if days is not None else c.health_lookback_days
     if days < 1:
         raise ValueError("Health days must be positive")
-    # Completed local calendar days only; Garmin's calendarDate is authoritative.
-    end = end or (datetime.now(ZoneInfo(os.getenv("TZ", "Europe/Madrid"))).date() - timedelta(days=1))
+    # The default window includes today as well as the requested completed days.
+    # An explicit end retains the exact historical window requested by callers.
+    if end is None:
+        end = datetime.now(ZoneInfo(os.getenv("TZ", "Europe/Madrid"))).date()
+        days += 1
     start = end - timedelta(days=days - 1)
     existing = {(m["date"][:10], m["type"]): m for m in o.metrics()}
     weights = defaultdict(list)

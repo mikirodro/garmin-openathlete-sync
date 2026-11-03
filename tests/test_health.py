@@ -199,3 +199,24 @@ def test_vo2_failure_preserves_existing_and_continues_other_metrics(tmp_path, mo
     assert old in api.rows
     assert not any(r["type"].startswith("VO2MAX") for r in api.writes)
     assert any(r["type"] == "DAILY_STEPS" for r in api.writes)
+
+
+def test_default_window_includes_today_and_completed_days_updates_current_values(tmp_path, monkeypatch):
+    from datetime import datetime
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 3, 12, tzinfo=tz)
+    monkeypatch.setattr("app.health.datetime", Clock)
+    monkeypatch.setattr("app.health.time.sleep", lambda _: None)
+    monkeypatch.setenv("TZ", "Europe/Madrid")
+    garmin, api = Garmin(), API()
+    steps = [100]
+    garmin.get_stats = lambda day: {"totalSteps": steps[0]}
+    c = SimpleNamespace(health_lookback_days=2, data_dir=tmp_path)
+    report = sync_health(c, SimpleNamespace(client=garmin), api)
+    assert (report["start"], report["end"]) == ("2026-11-01", "2026-11-03")
+    steps[0] = 200
+    report = sync_health(c, SimpleNamespace(client=garmin), api)
+    assert next(row for row in api.rows if row["date"] == "2026-11-03" and row["type"] == "DAILY_STEPS")["value"] == 200
+    assert report["failures"] == 0

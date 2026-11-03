@@ -134,7 +134,7 @@ def main():
     mode.add_argument("--performance-only", action="store_true", help="Import FTP history only; window from --health-days")
     mode.add_argument("--rpe-backfill", action="store_true", help="Backfill RPE for all mapped activities, resume safely")
     mode.add_argument("--planned-only", action="store_true", help="Import scheduled workouts once")
-    parser.add_argument("--health-days", type=int, help="Completed calendar days of health history")
+    parser.add_argument("--health-days", type=int, help="Completed days of health history; health also includes today")
     parser.add_argument("--planned-days", type=int, help="Upcoming calendar days of scheduled workouts (1..366)")
     parser.add_argument("--planned-start", type=date.fromisoformat, help="First calendar date, YYYY-MM-DD (with --planned-only)")
     parser.add_argument("--planned-end", type=date.fromisoformat, help="Last calendar date, YYYY-MM-DD (inclusive)")
