@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Informar de una vulnerabilidad (privado)
+    url: https://github.com/mikirodro/garmin-openathlete-sync/security/advisories/new
+    about: No publiques vulnerabilidades en Issues; usa el canal privado.

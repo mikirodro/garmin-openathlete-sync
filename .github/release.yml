@@ -1,0 +1,15 @@
+# Categories for automatically generated release notes.
+changelog:
+  exclude:
+    labels: [skip-changelog]
+  categories:
+    - title: Seguridad
+      labels: [security]
+    - title: Novedades
+      labels: [enhancement, feature]
+    - title: Correcciones
+      labels: [bug, fix]
+    - title: Dependencias
+      labels: [dependencies]
+    - title: Otros cambios
+      labels: ["*"]
