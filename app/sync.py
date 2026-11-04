@@ -4,6 +4,7 @@ import os
 import time
 from datetime import date, datetime, timedelta, timezone
 
+from . import __version__
 from .config import Config
 from .garmin import GarminClient
 from .openathlete import OpenAthleteClient
@@ -127,6 +128,7 @@ def run_cycle(c, g, o, state, health_days=None, health_only=False, planned_days=
 
 def main():
     parser = argparse.ArgumentParser(description="Garmin activities, health and scheduled workouts into OpenAthlete")
+    parser.add_argument("--version", action="version", version="garmin-openathlete-sync " + __version__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--once", action="store_true", help="Sync once, exit nonzero on failures")
     mode.add_argument("--login", action="store_true", help="Initialize Garmin tokens with interactive MFA")

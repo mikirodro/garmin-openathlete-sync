@@ -1,12 +1,18 @@
 # Seguridad
 
-Las correcciones se orientan a la última versión de `main`. No se garantiza
-soporte de versiones antiguas. Actualiza después de revisar los cambios.
+| Versión | Soporte de seguridad |
+|---|---|
+| Última release `1.x` | ✅ |
+| Anteriores | ❌ |
+
+Las correcciones se publican como nueva release (ver CHANGELOG.md). Actualiza
+después de revisar los cambios y verifica la atestación de la imagen
+(`gh attestation verify`), como se indica en el README.
 
 No publiques vulnerabilidades, credenciales o datos de salud en Issues o PR.
-Si está habilitado, usa Security → Report a vulnerability para informar en
-privado. Si no está disponible, abre un issue sin detalles sensibles solicitando
-un canal privado. El archivo SECURITY.md no habilita por sí solo esa función.
+Informa en privado desde Security → Report a vulnerability
+(https://github.com/mikirodro/garmin-openathlete-sync/security/advisories/new).
+Se intentará responder en un plazo de 7 días y coordinar la divulgación.
 
 Incluye versiones afectadas, impacto y reproducción mínima con datos sintéticos.
 Nunca pruebes contra cuentas, servicios o infraestructura de terceros.

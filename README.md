@@ -190,6 +190,29 @@ docker compose run --rm garmin-openathlete-sync python -m app --planned-only --p
 
 Detén antes el servicio y vuelve a arrancarlo al terminar, igual que en el ejemplo anterior. La carga histórica conserva los mismos controles de duplicados y ediciones manuales. Importa entrenamientos planificados como tales, sin crear actividades realizadas ni modificar las ya registradas. Garmin devuelve la definición actualmente disponible de cada entrenamiento; no garantiza recuperar versiones antiguas de plantillas editadas o borradas. El ciclo automático sigue mirando hacia el futuro.
 
+## Versiones e imagen publicada
+
+El proyecto sigue [Versionado Semántico](https://semver.org/lang/es/); los cambios
+de cada versión están en [CHANGELOG.md](CHANGELOG.md) y en
+[Releases](https://github.com/mikirodro/garmin-openathlete-sync/releases).
+Para producción usa una versión etiquetada, no `main`.
+
+Cada release publica una imagen multiarquitectura (amd64/arm64) con SBOM y
+atestación de procedencia. Para usarla en lugar de compilar, sustituye en
+`compose.yaml` la línea `build: .` por:
+
+```yaml
+    image: ghcr.io/mikirodro/garmin-openathlete-sync:1.0.0
+```
+
+Verifica que la imagen procede de este repositorio antes de desplegarla:
+
+```sh
+gh attestation verify oci://ghcr.io/mikirodro/garmin-openathlete-sync:1.0.0 --owner mikirodro
+```
+
+`python -m app --version` muestra la versión instalada.
+
 ## Desarrollo
 
 Python 3.12 o posterior:
