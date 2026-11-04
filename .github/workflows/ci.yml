@@ -1,11 +1,18 @@
 name: CI
-on: [push,pull_request]
-permissions:
-  contents: read
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions: {}
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     timeout-minutes: 10
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -14,3 +21,5 @@ jobs:
         with: {python-version: "3.12"}
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
+      - name: Audit dependencies for known vulnerabilities
+        run: pip install "pip-audit>=2.7,<3" && pip-audit -r requirements.txt

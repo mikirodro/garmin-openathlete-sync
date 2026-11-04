@@ -27,6 +27,11 @@ de la API ni depender de la dirección IP del host.
        docker compose run --rm garmin-openathlete-sync python -m app --once
        docker compose up -d
 
+El contenedor se ejecuta como usuario sin privilegios (UID 10001), con sistema
+de archivos de solo lectura salvo `/data` y `/tmp`, sin capacidades Linux,
+con `no-new-privileges` y con rotación de logs. Si usas `*_PASSWORD_FILE`,
+monta el secreto como volumen de solo lectura (`./secrets:/run/secrets:ro`).
+
 ## Operación
 
 Consulta el estado y los registros:

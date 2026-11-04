@@ -7,7 +7,7 @@ Mantén las propuestas pequeñas y añade pruebas de regresión cuando correspon
 
 Usa Python 3.12 y un entorno virtual. Instala `requirements-dev.txt` en tu entorno
 de desarrollo y ejecuta `python -m pytest -q`. Las pruebas deben usar datos
-sintéticos y dobles de clientes, sin acceder a cuentas reales ni al homelab.
+sintéticos y dobles de clientes, sin acceder a cuentas reales ni a infraestructura ajena.
 No ejecutes el importador para probar una PR contra datos de producción.
 
 No adjuntes `.env`, tokens, FIT/GPX/TCX reales, SQLite, respuestas HTTP completas

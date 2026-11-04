@@ -2,6 +2,13 @@
 
 Servicio Docker que importa automáticamente actividades FIT, métricas diarias de salud y entrenamientos programados de Garmin Connect en OpenAthlete mediante `python-garminconnect`. No requiere el conector oficial Garmin ni sus credenciales de desarrollador.
 
+> [!WARNING]
+> **Proyecto no oficial.** No está afiliado, patrocinado ni respaldado por Garmin Ltd. ni por OpenAthlete. "Garmin" y "Garmin Connect" son marcas de sus respectivos titulares y se citan solo para describir la compatibilidad.
+>
+> - Usa la API **no documentada** de Garmin Connect a través de [`python-garminconnect`](https://github.com/cyberjunky/python-garminconnect). Su uso puede no estar permitido por los términos de servicio de Garmin, puede dejar de funcionar sin aviso y Garmin podría limitar o bloquear tu cuenta. Úsalo solo con **tu propia cuenta** y bajo tu responsabilidad.
+> - Maneja credenciales y **datos de salud y ubicación** (categoría especial de datos según el RGPD). Ejecútalo solo en infraestructura que controles, no lo despliegues para terceros sin su consentimiento y protege `.env` y `data/`.
+> - Se distribuye "tal cual", sin garantías (ver [LICENSE](LICENSE)). No es un dispositivo médico.
+
 ## Inicio
 
 1. Copia `.env.example` a `.env` y completa las credenciales de ambas cuentas. La cuenta OpenAthlete debe tener perfil de atleta.

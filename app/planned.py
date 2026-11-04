@@ -318,7 +318,7 @@ def sync_planned(c, g, o, state, days=None, today=None, start_date=None, end_dat
     directory.mkdir(mode=0o700, exist_ok=True)
     target = directory / "last-report.json"
     temp = target.with_suffix(".tmp")
-    temp.write_text(json.dumps(report, indent=2) + "\n")
+    temp.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     temp.chmod(0o600)
     temp.replace(target)
     log.info("Planned summary: %s", report)

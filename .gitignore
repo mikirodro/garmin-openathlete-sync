@@ -23,6 +23,7 @@ credentials.json
 # Personal activity archives, authentication state and SQLite sidecars.
 /data/
 /your_data/
+/datos/
 *.fit
 *.fit.part
 *.tcx

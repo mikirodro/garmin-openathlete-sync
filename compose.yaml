@@ -11,6 +11,19 @@ services:
       ALLOW_INSECURE_HTTP: ${ALLOW_INSECURE_HTTP:-false}
     volumes:
       - ./data:/data
+    # Least privilege: the process only writes to /data and needs no capabilities.
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - openathlete
 

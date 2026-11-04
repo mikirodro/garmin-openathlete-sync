@@ -26,6 +26,7 @@
 **/*.pfx
 **/data
 **/your_data
+**/datos
 **/*.fit
 **/*.fit.part
 **/*.tcx
