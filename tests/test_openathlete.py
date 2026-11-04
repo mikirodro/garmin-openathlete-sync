@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.openathlete import OpenAthleteClient
+from app.openathlete import OpenAthleteClient, error_summary
 
 
 class FakeResponse:
@@ -103,3 +103,37 @@ def test_metric_api_obeys_retry_after_without_changing_payload(monkeypatch):
     metric = {"type": "WEIGHT", "date": "2026-10-20", "value": 71}
     client.upsert_metric(metric)
     assert sleeps == [3.25] and payloads == [metric, metric]
+
+
+class ErrorResponse:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self.payload = payload
+
+    def json(self):
+        if isinstance(self.payload, Exception):
+            raise self.payload
+        return self.payload
+
+
+class HTTPFailure(Exception):
+    def __init__(self, response):
+        super().__init__("failure")
+        self.response = response
+
+
+def test_error_summary_reports_status_and_api_code():
+    error = HTTPFailure(ErrorResponse(409, {"statusCode": 409, "code": "FIT_DUPLICATE_TIME"}))
+    assert error_summary(error) == "HTTPFailure, HTTP 409, FIT_DUPLICATE_TIME"
+
+
+def test_error_summary_accepts_code_in_message_list():
+    error = HTTPFailure(ErrorResponse(422, {"message": ["FIT_NO_STREAM"], "error": "Unprocessable Entity"}))
+    assert error_summary(error) == "HTTPFailure, HTTP 422, FIT_NO_STREAM"
+
+
+def test_error_summary_never_logs_free_text_or_bodies():
+    error = HTTPFailure(ErrorResponse(400, {"message": "Activity 'Run near home' by user@example.invalid"}))
+    assert error_summary(error) == "HTTPFailure, HTTP 400"
+    assert error_summary(HTTPFailure(ErrorResponse(502, ValueError("not json")))) == "HTTPFailure, HTTP 502"
+    assert error_summary(ValueError("secret detail")) == "ValueError"

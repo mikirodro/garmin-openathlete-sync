@@ -6,6 +6,14 @@ y el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Cambiado
+- `garminconnect` 0.3.20, `requests` >= 2.34.2 y `pytest` >= 9.2; Actions
+  `checkout` v7 y `setup-python` v7 en todos los workflows.
+
+### Corregido
+- Los fallos de descarga e importación FIT registran el estado HTTP y el código
+  de error de la API (p. ej. `FIT_DUPLICATE_TIME`), sin cuerpos de respuesta.
+
 ## [1.0.0] - 2026-11-04
 
 Primera versión pública.

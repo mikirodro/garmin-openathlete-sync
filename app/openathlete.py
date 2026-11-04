@@ -1,9 +1,36 @@
+import re
+import time
 from pathlib import Path
 
 import requests
-import time
 
 from .config import validate_base_url
+
+
+ERROR_CODE = re.compile(r"[A-Z][A-Z0-9_]{2,63}")
+
+
+def error_summary(error):
+    """Exception type, HTTP status and API error code; never response bodies."""
+    parts = [type(error).__name__]
+    response = getattr(error, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is None:
+        return parts[0]
+    parts.append(f"HTTP {status}")
+    try:
+        data = response.json()
+    except Exception:
+        data = None
+    if isinstance(data, dict):
+        # Only machine-readable codes such as FIT_DUPLICATE_TIME: messages may contain personal data.
+        for key in ("code", "errorCode", "message", "error"):
+            values = data.get(key)
+            for value in values if isinstance(values, list) else [values]:
+                if isinstance(value, str) and ERROR_CODE.fullmatch(value):
+                    parts.append(value)
+                    return ", ".join(parts)
+    return ", ".join(parts)
 
 
 class OpenAthleteClient:
