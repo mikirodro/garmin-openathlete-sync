@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from . import __version__
 from .config import Config
 from .garmin import GarminClient
-from .openathlete import OpenAthleteClient
+from .openathlete import OpenAthleteClient, error_summary
 from .state import State
 from .security import single_instance
 from .health import sync_health
@@ -48,7 +48,7 @@ def run_once(c, g, o, state):
                 log.warning("Garmin %s import warnings: %s", gid, result["warnings"])
         except Exception as error:
             failed += 1
-            log.error("FIT import failed for Garmin %s (%s)", gid, type(error).__name__)
+            log.error("FIT import failed for Garmin %s (%s)", gid, error_summary(error))
 
     # Archived failed uploads remain retryable even after the lookback window.
     for path in sorted(folder.glob("*.fit")):
@@ -72,7 +72,7 @@ def run_once(c, g, o, state):
             path.with_suffix(".name.txt").write_text(name, encoding="utf-8")
         except Exception as error:
             failed += 1
-            log.error("FIT download failed for Garmin %s (%s)", gid, type(error).__name__)
+            log.error("FIT download failed for Garmin %s (%s)", gid, error_summary(error))
             continue
         upload(gid, path, name)
     if failed:
