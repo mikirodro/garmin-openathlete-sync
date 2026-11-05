@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.openathlete import OpenAthleteClient, error_summary
+from app.openathlete import OpenAthleteClient, error_summary, rejection_code
 
 
 class FakeResponse:
@@ -137,3 +137,12 @@ def test_error_summary_never_logs_free_text_or_bodies():
     assert error_summary(error) == "HTTPFailure, HTTP 400"
     assert error_summary(HTTPFailure(ErrorResponse(502, ValueError("not json")))) == "HTTPFailure, HTTP 502"
     assert error_summary(ValueError("secret detail")) == "ValueError"
+
+
+def test_rejection_code_only_for_permanent_api_rejections():
+    assert rejection_code(HTTPFailure(ErrorResponse(400, {"code": "FIT_INVALID"}))) == "FIT_INVALID"
+    assert rejection_code(HTTPFailure(ErrorResponse(409, {"code": "FIT_DUPLICATE_TIME"}))) == "FIT_DUPLICATE_TIME"
+    assert rejection_code(HTTPFailure(ErrorResponse(400, {"message": "free text"}))) is None
+    assert rejection_code(HTTPFailure(ErrorResponse(503, {"code": "UNAVAILABLE"}))) is None
+    assert rejection_code(HTTPFailure(ErrorResponse(401, {"code": "UNAUTHORIZED"}))) is None
+    assert rejection_code(ValueError("no response")) is None

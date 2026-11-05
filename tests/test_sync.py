@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.sync import run_once, run_cycle
+from app.state import State
+from app.sync import retry_rejected, run_once, run_cycle
 
 
 class FakeGarmin:
@@ -50,6 +51,13 @@ class FakeState:
 
     def add(self, activity_id: str, openathlete_id, synced_at: str):
         self.added.append((activity_id, openathlete_id, synced_at))
+
+    def rejected(self, activity_id: str) -> bool:
+        return activity_id in getattr(self, "rejections", {})
+
+    def reject(self, activity_id: str, code: str, _when: str):
+        self.rejections = getattr(self, "rejections", {})
+        self.rejections[activity_id] = code
 
 
 def test_run_once_uploads_downloaded_fit_and_records_success(tmp_path: Path):
@@ -198,3 +206,87 @@ def test_rpe_backfill_cli_only_runs_rpe(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.argv", ["app", "--rpe-backfill"])
     main()
     assert calls == [{"backfill": True}]
+
+
+class ApiResponse:
+    def __init__(self, status_code, code):
+        self.status_code = status_code
+        self.code = code
+
+    def json(self):
+        return {"statusCode": self.status_code, "code": self.code}
+
+
+class ApiError(Exception):
+    def __init__(self, status_code, code):
+        super().__init__("synthetic API error")
+        self.response = ApiResponse(status_code, code)
+
+
+class RejectingOpenAthlete(FakeOpenAthlete):
+    def __init__(self, status_code, code):
+        super().__init__()
+        self.error = ApiError(status_code, code)
+
+    def import_fit(self, file_path: Path, name: str):
+        self.imported_files.append(file_path)
+        raise self.error
+
+
+def lookback_config(tmp_path):
+    return SimpleNamespace(data_dir=tmp_path, lookback_days=7, activity_limit=10)
+
+
+@pytest.mark.parametrize("status,code", [(400, "FIT_INVALID"), (400, "FIT_MULTISPORT_UNSUPPORTED"),
+                                         (409, "FIT_DUPLICATE_TIME")])
+def test_permanent_rejection_is_quarantined_not_failed(tmp_path, status, code):
+    state = FakeState()
+    api = RejectingOpenAthlete(status, code)
+    assert run_once(lookback_config(tmp_path), FakeGarmin(), api, state) == 0
+    rejected = tmp_path / "activities" / "rejected"
+    assert (rejected / "12345.fit").read_bytes() == b"synthetic FIT"
+    assert (rejected / "12345.name.txt").exists()
+    assert not (tmp_path / "activities" / "12345.fit").exists()
+    assert state.rejections == {"12345": code}
+    # Not retried from the archive nor downloaded again while still in the lookback window.
+    assert run_once(lookback_config(tmp_path), FakeGarmin(), api, state) == 0
+    assert len(api.imported_files) == 1
+
+
+@pytest.mark.parametrize("status,code", [(503, "SERVICE_UNAVAILABLE"), (429, "TOO_MANY_REQUESTS"), (400, None)])
+def test_transient_or_unknown_errors_remain_retryable(tmp_path, status, code):
+    state = FakeState()
+    with pytest.raises(RuntimeError, match="1 activities failed"):
+        run_once(lookback_config(tmp_path), FakeGarmin(), RejectingOpenAthlete(status, code), state)
+    assert (tmp_path / "activities" / "12345.fit").exists()
+    assert not (tmp_path / "activities" / "rejected").exists()
+    assert not state.rejected("12345")
+
+
+def test_retry_rejected_requeues_files_and_clears_state(tmp_path):
+    state = State(tmp_path / "state.sqlite3")
+    api = RejectingOpenAthlete(409, "FIT_DUPLICATE_TIME")
+    run_once(lookback_config(tmp_path), FakeGarmin(), api, state)
+    assert state.rejected("12345")
+    assert retry_rejected(lookback_config(tmp_path), state) == ["12345"]
+    assert not state.rejected("12345")
+    assert (tmp_path / "activities" / "12345.fit").exists()
+    assert (tmp_path / "activities" / "12345.name.txt").exists()
+    # Once the duplicate is resolved, the archived FIT imports normally.
+    assert run_once(lookback_config(tmp_path), FakeGarmin(), FakeOpenAthlete(), state) == 1
+    assert state.contains("12345")
+
+
+def test_retry_rejected_cli_only_requeues(tmp_path, monkeypatch):
+    from app.sync import main
+    config = SimpleNamespace(garmin_email="", garmin_password="", data_dir=tmp_path,
+                             openathlete_base_url="", openathlete_email="", openathlete_password="")
+    monkeypatch.setattr("app.sync.Config.from_env", lambda: config)
+    client = SimpleNamespace(login=lambda: pytest.fail("--retry-rejected must not contact accounts"))
+    monkeypatch.setattr("app.sync.GarminClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr("app.sync.OpenAthleteClient", lambda *args, **kwargs: client)
+    calls = []
+    monkeypatch.setattr("app.sync.retry_rejected", lambda *args: calls.append(args))
+    monkeypatch.setattr("sys.argv", ["app", "--retry-rejected"])
+    main()
+    assert len(calls) == 1

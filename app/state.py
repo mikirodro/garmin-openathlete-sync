@@ -6,6 +6,7 @@ class State:
         self.db=sqlite3.connect(path)
         self.db.execute("CREATE TABLE IF NOT EXISTS synced_activity (garmin_id TEXT PRIMARY KEY, openathlete_id TEXT, synced_at TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS synced_workout (garmin_schedule_id TEXT PRIMARY KEY, openathlete_id INTEGER NOT NULL, payload_hash TEXT NOT NULL, event_hash TEXT NOT NULL, synced_at TEXT NOT NULL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS rejected_activity (garmin_id TEXT PRIMARY KEY, code TEXT NOT NULL, rejected_at TEXT NOT NULL)")
         self.db.commit()
     def contains(self,gid): return self.db.execute("SELECT 1 FROM synced_activity WHERE garmin_id=?",(gid,)).fetchone() is not None
     def add(self,gid,oid,when):
@@ -60,3 +61,16 @@ class State:
         self.db.execute("INSERT OR REPLACE INTO rpe_manual_lock VALUES (?,?)", (gid, str(event_id)))
         self.db.commit()
         self.mark_rpe_checked(gid)
+
+    def rejected(self, gid):
+        return self.db.execute("SELECT 1 FROM rejected_activity WHERE garmin_id=?", (gid,)).fetchone() is not None
+
+    def reject(self, gid, code, when):
+        self.db.execute("INSERT OR REPLACE INTO rejected_activity VALUES (?,?,?)", (gid, code, when))
+        self.db.commit()
+
+    def clear_rejected(self):
+        ids = [row[0] for row in self.db.execute("SELECT garmin_id FROM rejected_activity")]
+        self.db.execute("DELETE FROM rejected_activity")
+        self.db.commit()
+        return ids

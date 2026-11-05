@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from . import __version__
 from .config import Config
 from .garmin import GarminClient
-from .openathlete import OpenAthleteClient, error_summary
+from .openathlete import OpenAthleteClient, error_summary, rejection_code
 from .state import State
 from .security import single_instance
 from .health import sync_health
@@ -23,17 +23,35 @@ def dt(value):
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
+def move_fit(path, folder):
+    """Move a FIT and its name sidecar, keeping both for manual review."""
+    folder.mkdir(mode=0o700, exist_ok=True)
+    for source in (path, path.with_suffix(".name.txt")):
+        if source.exists():
+            source.replace(folder / source.name)
+
+
+def retry_rejected(c, state):
+    folder = c.data_dir / "activities"
+    rejected = folder / "rejected"
+    ids = state.clear_rejected()
+    for path in sorted(rejected.glob("*.fit")) if rejected.is_dir() else []:
+        move_fit(path, folder)
+    log.info("%s rejected activities queued for retry on the next sync", len(ids))
+    return ids
+
+
 def run_once(c, g, o, state):
     g.login()
     o.login()
     cutoff = datetime.now(timezone.utc) - timedelta(days=c.lookback_days)
     folder = c.data_dir / "activities"
     folder.mkdir(parents=True, exist_ok=True)
-    imported = failed = 0
+    imported = failed = rejected = 0
     attempted = set()
 
     def upload(gid, path, name):
-        nonlocal imported, failed
+        nonlocal imported, failed, rejected
         attempted.add(gid)
         try:
             result = o.import_fit(path, name)
@@ -47,6 +65,15 @@ def run_once(c, g, o, state):
             if result.get("warnings"):
                 log.warning("Garmin %s import warnings: %s", gid, result["warnings"])
         except Exception as error:
+            code = rejection_code(error)
+            if code:
+                # Permanent rejection: retrying every cycle cannot succeed and hides real failures.
+                move_fit(path, folder / "rejected")
+                state.reject(gid, code, datetime.now(timezone.utc).isoformat())
+                rejected += 1
+                log.warning("Garmin %s rejected by OpenAthlete (%s); moved to activities/rejected "
+                            "for manual review", gid, error_summary(error))
+                return
             failed += 1
             log.error("FIT import failed for Garmin %s (%s)", gid, error_summary(error))
 
@@ -64,7 +91,7 @@ def run_once(c, g, o, state):
             start = dt(activity["startTimeGMT"])
             if start < cutoff:
                 break
-            if not gid.isdecimal() or state.contains(gid) or gid in attempted:
+            if not gid.isdecimal() or state.contains(gid) or state.rejected(gid) or gid in attempted:
                 continue
             path = folder / (gid + ".fit")
             name = (str(activity.get("activityName") or "Garmin " + gid).strip() or "Garmin " + gid)[:100]
@@ -75,6 +102,9 @@ def run_once(c, g, o, state):
             log.error("FIT download failed for Garmin %s (%s)", gid, error_summary(error))
             continue
         upload(gid, path, name)
+    if rejected:
+        log.warning("%s activities rejected by OpenAthlete; review activities/rejected, "
+                    "then run --retry-rejected", rejected)
     if failed:
         raise RuntimeError(f"{failed} activities failed; {imported} imported; failures will be retried")
     return imported
@@ -136,6 +166,8 @@ def main():
     mode.add_argument("--performance-only", action="store_true", help="Import FTP history only; window from --health-days")
     mode.add_argument("--rpe-backfill", action="store_true", help="Backfill RPE for all mapped activities, resume safely")
     mode.add_argument("--planned-only", action="store_true", help="Import scheduled workouts once")
+    mode.add_argument("--retry-rejected", action="store_true",
+                      help="Queue FIT files rejected by OpenAthlete for another import attempt")
     parser.add_argument("--health-days", type=int, help="Completed days of health history; health also includes today")
     parser.add_argument("--planned-days", type=int, help="Upcoming calendar days of scheduled workouts (1..366)")
     parser.add_argument("--planned-start", type=date.fromisoformat, help="First calendar date, YYYY-MM-DD (with --planned-only)")
@@ -173,6 +205,9 @@ def run_configured(c, args):
         sync_performance(c, g, o, days=args.health_days)
         return
     state = State(c.data_dir / "state.sqlite3")
+    if args.retry_rejected:
+        retry_rejected(c, state)
+        return
     if args.rpe_backfill:
         g.login()
         o.login()
