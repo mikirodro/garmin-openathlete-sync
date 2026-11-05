@@ -24,9 +24,10 @@ jobs:
         run: |
           version="$(python -c 'import app; print(app.__version__)')"
           test "v${version}" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} != v${version}"; exit 1; }
+      - run: pip install --require-hashes -r requirements.lock
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
-      - run: pip install "pip-audit>=2.7,<3" && pip-audit -r requirements.txt
+      - run: pip install "pip-audit>=2.7,<3" && pip-audit --disable-pip --no-deps -r requirements.lock
 
   image:
     needs: test

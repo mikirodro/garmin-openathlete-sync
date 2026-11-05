@@ -1,5 +1,6 @@
 import argparse
 import logging
+import json
 import os
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -53,12 +54,18 @@ def run_once(c, g, o, state):
     def upload(gid, path, name):
         nonlocal imported, failed, rejected
         attempted.add(gid)
+        if state.pending(gid):
+            failed += 1
+            log.error("Garmin %s has an uncertain previous import; inspect OpenAthlete before resolving it", gid)
+            return
+        state.mark_pending(gid)
         try:
             result = o.import_fit(path, name)
             if not result.get("eventId"):
                 raise ValueError("OpenAthlete response has no eventId")
             if result.get("processingQueued") is False:
-                raise RuntimeError("Activity saved, but processing not queued; retry next cycle")
+                state.mark_pending(gid, str(result["eventId"]), "processing_not_queued")
+                raise RuntimeError("Activity saved, but processing not queued; manual review required")
             state.add(gid, result["eventId"], datetime.now(timezone.utc).isoformat())
             imported += 1
             log.info("Imported Garmin %s -> OpenAthlete %s", gid, result["eventId"])
@@ -68,6 +75,7 @@ def run_once(c, g, o, state):
             code = rejection_code(error)
             if code:
                 # Permanent rejection: retrying every cycle cannot succeed and hides real failures.
+                state.clear_pending(gid)
                 move_fit(path, folder / "rejected")
                 state.reject(gid, code, datetime.now(timezone.utc).isoformat())
                 rejected += 1
@@ -106,7 +114,7 @@ def run_once(c, g, o, state):
         log.warning("%s activities rejected by OpenAthlete; review activities/rejected, "
                     "then run --retry-rejected", rejected)
     if failed:
-        raise RuntimeError(f"{failed} activities failed; {imported} imported; failures will be retried")
+        raise RuntimeError(f"{failed} activities failed; {imported} imported; review unresolved imports before retrying")
     return imported
 
 
@@ -156,6 +164,20 @@ def run_cycle(c, g, o, state, health_days=None, health_only=False, planned_days=
         raise RuntimeError(f"{len(failures)} sync stages failed")
 
 
+def write_status(data_dir, status):
+    target = data_dir / "cycle-status.json"
+    previous = {}
+    try:
+        previous = json.loads(target.read_text())
+    except (OSError, ValueError):
+        pass
+    now = datetime.now(timezone.utc).isoformat()
+    last_success = now if status == "ok" else previous.get("last_success")
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"status": status, "checked_at": now, "last_success": last_success}) + "\n")
+    temporary.replace(target)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Garmin activities, health and scheduled workouts into OpenAthlete")
     parser.add_argument("--version", action="version", version="garmin-openathlete-sync " + __version__)
@@ -166,13 +188,17 @@ def main():
     mode.add_argument("--performance-only", action="store_true", help="Import FTP history only; window from --health-days")
     mode.add_argument("--rpe-backfill", action="store_true", help="Backfill RPE for all mapped activities, resume safely")
     mode.add_argument("--planned-only", action="store_true", help="Import scheduled workouts once")
+    mode.add_argument("--resolve-uncertain", metavar="GARMIN_ID", help="After manual review, permit this activity to be retried")
     mode.add_argument("--retry-rejected", action="store_true",
                       help="Queue FIT files rejected by OpenAthlete for another import attempt")
+    parser.add_argument("--event-id", help="Link a manually verified OpenAthlete event (with --resolve-uncertain)")
     parser.add_argument("--health-days", type=int, help="Completed days of health history; health also includes today")
     parser.add_argument("--planned-days", type=int, help="Upcoming calendar days of scheduled workouts (1..366)")
     parser.add_argument("--planned-start", type=date.fromisoformat, help="First calendar date, YYYY-MM-DD (with --planned-only)")
     parser.add_argument("--planned-end", type=date.fromisoformat, help="Last calendar date, YYYY-MM-DD (inclusive)")
     args = parser.parse_args()
+    if args.event_id is not None and (not args.resolve_uncertain or not args.event_id.isdecimal()):
+        parser.error("--event-id requires --resolve-uncertain and a numeric OpenAthlete event ID")
     if args.health_days is not None and args.health_days <= 0:
         parser.error("--health-days must be positive")
     if args.planned_days is not None and not 1 <= args.planned_days <= 366:
@@ -205,6 +231,18 @@ def run_configured(c, args):
         sync_performance(c, g, o, days=args.health_days)
         return
     state = State(c.data_dir / "state.sqlite3")
+    if args.resolve_uncertain:
+        if not args.resolve_uncertain.isdecimal():
+            raise ValueError("Garmin ID must contain digits only")
+        if not state.pending(args.resolve_uncertain):
+            raise ValueError("No uncertain import exists for this Garmin ID")
+        if args.event_id:
+            state.add(args.resolve_uncertain, args.event_id, datetime.now(timezone.utc).isoformat())
+            log.info("Uncertain import linked to manually verified OpenAthlete event")
+        else:
+            state.clear_pending(args.resolve_uncertain)
+            log.info("Uncertain import cleared; activity will be retried next cycle")
+        return
     if args.retry_rejected:
         retry_rejected(c, state)
         return
@@ -225,7 +263,9 @@ def run_configured(c, args):
     while True:
         try:
             run_cycle(c, g, o, state, args.health_days, planned_days=args.planned_days)
+            write_status(c.data_dir, "ok")
         except Exception as error:
+            write_status(c.data_dir, "failed")
             # Do not log HTTP response bodies or authentication secrets.
             log.error("Sync cycle failed (%s); see activity errors above", type(error).__name__)
         log.info("Next sync in %s seconds", c.sync_interval)

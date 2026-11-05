@@ -45,12 +45,23 @@ class FakeOpenAthlete:
 class FakeState:
     def __init__(self):
         self.added = []
+        self.pending_items = {}
+
+    def pending(self, gid):
+        return self.pending_items.get(gid)
+
+    def mark_pending(self, gid, event_id=None, status="sending"):
+        self.pending_items[gid] = (event_id, status)
+
+    def clear_pending(self, gid):
+        self.pending_items.pop(gid, None)
 
     def contains(self, activity_id: str) -> bool:
         return any(entry[0] == activity_id for entry in self.added)
 
     def add(self, activity_id: str, openathlete_id, synced_at: str):
         self.added.append((activity_id, openathlete_id, synced_at))
+        self.clear_pending(activity_id)
 
     def rejected(self, activity_id: str) -> bool:
         return activity_id in getattr(self, "rejections", {})
@@ -103,18 +114,31 @@ def test_pending_archive_retried_outside_lookback(tmp_path):
     assert state.contains("999")
 
 
-def test_processing_not_queued_is_retried_without_redownload(tmp_path):
+def test_processing_not_queued_is_not_reimported(tmp_path):
     config = SimpleNamespace(data_dir=tmp_path, lookback_days=7, activity_limit=10)
     state = FakeState()
     api = FakeOpenAthlete()
     api.import_fit = lambda *args: {"eventId": 42, "processingQueued": False}
     with pytest.raises(RuntimeError):
         run_once(config, FakeGarmin(), api, state)
-    assert not state.added
-    garmin = FakeGarmin()
-    garmin.download_fit = lambda *args: pytest.fail("must reuse archived bytes")
-    assert run_once(config, garmin, FakeOpenAthlete(), state) == 1
+    assert state.pending("12345") == ("42", "processing_not_queued")
+    api.import_fit = lambda *args: pytest.fail("uncertain activity must not be reimported")
+    with pytest.raises(RuntimeError):
+        run_once(config, FakeGarmin(), api, state)
 
+
+def test_lost_response_survives_restart_and_is_not_reimported(tmp_path):
+    config = SimpleNamespace(data_dir=tmp_path, lookback_days=7, activity_limit=10)
+    state = State(tmp_path / "state.sqlite3")
+    with pytest.raises(RuntimeError):
+        run_once(config, FakeGarmin(), FakeOpenAthlete(fail_import=True), state)
+    state.db.close()
+    state = State(tmp_path / "state.sqlite3")
+    api = FakeOpenAthlete()
+    with pytest.raises(RuntimeError):
+        run_once(config, FakeGarmin(), api, state)
+    assert not api.imported_files
+    assert state.pending("12345") == (None, "sending")
 
 def test_prefers_gmt_and_stops_after_cutoff(tmp_path):
     config = SimpleNamespace(data_dir=tmp_path, lookback_days=7, activity_limit=10)
