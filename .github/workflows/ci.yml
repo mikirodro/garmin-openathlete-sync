@@ -19,7 +19,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with: {python-version: "3.12"}
+      - run: pip install --require-hashes -r requirements.lock
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
       - name: Audit dependencies for known vulnerabilities
-        run: pip install "pip-audit>=2.7,<3" && pip-audit -r requirements.txt
+        run: pip install "pip-audit>=2.7,<3" && pip-audit --disable-pip --no-deps -r requirements.lock

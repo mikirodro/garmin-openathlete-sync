@@ -7,10 +7,17 @@ class State:
         self.db.execute("CREATE TABLE IF NOT EXISTS synced_activity (garmin_id TEXT PRIMARY KEY, openathlete_id TEXT, synced_at TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS synced_workout (garmin_schedule_id TEXT PRIMARY KEY, openathlete_id INTEGER NOT NULL, payload_hash TEXT NOT NULL, event_hash TEXT NOT NULL, synced_at TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS rejected_activity (garmin_id TEXT PRIMARY KEY, code TEXT NOT NULL, rejected_at TEXT NOT NULL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS pending_activity (garmin_id TEXT PRIMARY KEY, event_id TEXT, status TEXT NOT NULL)")
         self.db.commit()
+    def pending(self, gid):
+        return self.db.execute("SELECT event_id, status FROM pending_activity WHERE garmin_id=?", (gid,)).fetchone()
+    def mark_pending(self, gid, event_id=None, status="sending"):
+        self.db.execute("INSERT OR REPLACE INTO pending_activity VALUES (?,?,?)", (gid, event_id, status)); self.db.commit()
+    def clear_pending(self, gid):
+        self.db.execute("DELETE FROM pending_activity WHERE garmin_id=?", (gid,)); self.db.commit()
     def contains(self,gid): return self.db.execute("SELECT 1 FROM synced_activity WHERE garmin_id=?",(gid,)).fetchone() is not None
     def add(self,gid,oid,when):
-        self.db.execute("INSERT OR REPLACE INTO synced_activity VALUES (?,?,?)",(gid,str(oid) if oid is not None else None,when)); self.db.commit()
+        self.db.execute("INSERT OR REPLACE INTO synced_activity VALUES (?,?,?)",(gid,str(oid) if oid is not None else None,when)); self.db.execute("DELETE FROM pending_activity WHERE garmin_id=?", (gid,)); self.db.commit()
 
     def workout(self, schedule_id):
         row = self.db.execute("SELECT openathlete_id, payload_hash, event_hash FROM synced_workout WHERE garmin_schedule_id=?", (str(schedule_id),)).fetchone()

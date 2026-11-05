@@ -53,8 +53,8 @@ ejecuta una sincronización manual sin instancias simultáneas:
 Ejecuta también `docker compose up -d` si la sincronización manual termina con
 error, para reactivar el servicio. Revisa los registros para conocer los fallos.
 
-El estado SQLite evita reenviar actividades ya importadas. Los FIT pendientes
-se reintentan incluso fuera de la ventana. No borres `data`: contiene los
+El estado SQLite evita reenviar actividades ya importadas. Los FIT pendientes que aún no se han enviado se procesan incluso fuera de la ventana.
+Los envíos con resultado incierto requieren revisión manual, como se indica abajo. No borres `data`: contiene los
 tokens, los archivos originales y el historial de importaciones.
 
 ## Advertencias de importación
@@ -68,8 +68,8 @@ Los FIT originales se conservan para revisión.
 Si OpenAthlete rechaza definitivamente un archivo (HTTP 400/409/413/422 con un
 código de la API), el FIT y su nombre se mueven a `data/activities/rejected/`,
 se registra el código en SQLite y el ciclo no lo cuenta como fallo ni lo vuelve
-a descargar. Los errores transitorios (5xx, 429, red o respuestas sin código)
-siguen reintentándose en cada ciclo.
+a descargar. Los errores de envío cuyo resultado no pueda confirmarse requieren revisión manual
+antes de reintentar, incluidos errores 5xx, 429 o de red.
 
 | Código | Causa | Qué hacer |
 |---|---|---|
@@ -103,3 +103,48 @@ Para revertir, restaura código/configuración y la imagen anterior y recrea sol
 el importador. No borres SQLite ni los tokens; este cambio no migra su esquema.
 La carpeta DATA_DIR pasa a 0700 y los nuevos archivos son privados. La reversión
 no requiere ampliar esos permisos. No se modifican recursivamente archivos antiguos.
+
+## Importaciones con resultado incierto
+
+Antes de enviar un FIT se registra la intención en SQLite. Si se pierde la
+respuesta, el proceso se interrumpe o la API confirma un evento sin ponerlo en
+cola, el importador **no reenvía** ese FIT: exige una revisión manual y marca
+el ciclo como fallido. Esto prioriza evitar duplicados; también puede requerir
+una revisión cuando un fallo de red ocurrió antes de enviar el archivo.
+
+Detén solo el importador y comprueba en OpenAthlete si el evento existe y está
+procesado. Con un identificador de Garmin y de evento comprobados, enlázalos:
+
+    docker compose stop garmin-openathlete-sync
+    docker compose run --rm garmin-openathlete-sync python -m app --resolve-uncertain ID_GARMIN --event-id ID_EVENTO
+    docker compose up -d garmin-openathlete-sync
+
+Si has comprobado que no se creó ningún evento, omite `--event-id` para
+permitir un reintento. Si sí existe pero no se procesó, resuelve primero el
+procesamiento en OpenAthlete. No borres SQLite para desbloquear la importación.
+
+## Supervisión y copias
+
+`docker compose ps` refleja la salud del último ciclo completo: un error o una
+marca de tiempo demasiado antigua hace que Docker marque el contenedor como
+`unhealthy`. Configura Uptime Kuma para alertar sobre ese estado; este proyecto
+no configura automáticamente monitores externos. El archivo privado
+`data/cycle-status.json` conserva el último resultado y el último éxito.
+
+Haz copias cifradas y de acceso restringido de `data` y `.env`, además de la
+base de datos de OpenAthlete. Para una copia coherente de SQLite, detén el
+importador o utiliza la API de copia de SQLite. Comprueba periódicamente la
+restauración en un entorno aislado, sin conectar con las cuentas reales.
+
+## Dependencias y compatibilidad
+
+La imagen instala `requirements.lock` con versiones y hashes. Tras modificar
+`requirements.txt`, regenera el lock con Python 3.12 y `pip-compile
+--generate-hashes --output-file=requirements.lock requirements.txt`, revisa el
+diff, audita las dependencias y ejecuta las pruebas antes de desplegar.
+
+La API efectiva observada en esta instalación es OpenAthlete v1.4.0 y el
+conector usa garminconnect 0.3.20. El ciclo existente terminó correctamente;
+esto no sustituye pruebas de contrato con datos de prueba de cada endpoint.
+No actualices OpenAthlete sin revisar sus migraciones y respaldar su base de
+datos.
