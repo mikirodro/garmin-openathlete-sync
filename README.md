@@ -33,7 +33,7 @@ El montaje persistente `./data:/data` guarda tokens en `/data/garmin`, FIT y nom
 
 Se recorren todas las páginas de actividades, desde las más recientes hasta `GARMIN_ACTIVITY_LOOKBACK_DAYS` días atrás (7 por defecto). `GARMIN_ACTIVITY_LIMIT` es el tamaño de página, no el máximo de actividades. Aumenta el lookback para la primera importación histórica. Los fallos de descarga se reintentan mientras la actividad siga dentro de esa ventana; amplíala si una interrupción prolongada deja actividades fuera.
 
-Los FIT descargados cuyo envío haya fallado se reintentan incluso fuera de la ventana. El estado solo se confirma cuando OpenAthlete devuelve `eventId` y no indica procesamiento pendiente. Si una respuesta se pierde, reenviar los mismos bytes recupera la actividad existente gracias a la deduplicación de OpenAthlete. Los FIT se conservan como archivo local. Las advertencias de datos incompletos se registran.
+Los FIT descargados cuyo envío haya fallado se reintentan incluso fuera de la ventana. El estado solo se confirma cuando OpenAthlete devuelve `eventId` y no indica procesamiento pendiente. Si una respuesta se pierde, reenviar los mismos bytes recupera la actividad existente gracias a la deduplicación de OpenAthlete. Los FIT se conservan como archivo local. Las advertencias de datos incompletos se registran. Los archivos que OpenAthlete rechaza de forma definitiva (duplicados, multideporte, FIT inválido) se apartan a `/data/activities/rejected/` y no hacen fallar el ciclo; consulta [DEPLOYMENT.md](DEPLOYMENT.md#fit-rechazados-por-openathlete).
 
 ## Migración del antiguo servicio TCX
 
@@ -202,13 +202,13 @@ atestación de procedencia. Para usarla en lugar de compilar, sustituye en
 `compose.yaml` la línea `build: .` por:
 
 ```yaml
-    image: ghcr.io/mikirodro/garmin-openathlete-sync:1.0.0
+    image: ghcr.io/mikirodro/garmin-openathlete-sync:1.1.0
 ```
 
 Verifica que la imagen procede de este repositorio antes de desplegarla:
 
 ```sh
-gh attestation verify oci://ghcr.io/mikirodro/garmin-openathlete-sync:1.0.0 --owner mikirodro
+gh attestation verify oci://ghcr.io/mikirodro/garmin-openathlete-sync:1.1.0 --owner mikirodro
 ```
 
 `python -m app --version` muestra la versión instalada.

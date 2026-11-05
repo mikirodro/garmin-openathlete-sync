@@ -10,27 +10,42 @@ from .config import validate_base_url
 ERROR_CODE = re.compile(r"[A-Z][A-Z0-9_]{2,63}")
 
 
-def error_summary(error):
-    """Exception type, HTTP status and API error code; never response bodies."""
-    parts = [type(error).__name__]
-    response = getattr(error, "response", None)
-    status = getattr(response, "status_code", None)
-    if status is None:
-        return parts[0]
-    parts.append(f"HTTP {status}")
+PERMANENT_STATUSES = {400, 409, 413, 422}
+
+
+def api_code(response):
+    """Machine-readable API code such as FIT_DUPLICATE_TIME, never free text."""
     try:
         data = response.json()
     except Exception:
-        data = None
-    if isinstance(data, dict):
-        # Only machine-readable codes such as FIT_DUPLICATE_TIME: messages may contain personal data.
-        for key in ("code", "errorCode", "message", "error"):
-            values = data.get(key)
-            for value in values if isinstance(values, list) else [values]:
-                if isinstance(value, str) and ERROR_CODE.fullmatch(value):
-                    parts.append(value)
-                    return ", ".join(parts)
-    return ", ".join(parts)
+        return None
+    if not isinstance(data, dict):
+        return None
+    # Messages may contain personal data: only accept code-shaped values.
+    for key in ("code", "errorCode", "message", "error"):
+        values = data.get(key)
+        for value in values if isinstance(values, list) else [values]:
+            if isinstance(value, str) and ERROR_CODE.fullmatch(value):
+                return value
+    return None
+
+
+def error_summary(error):
+    """Exception type, HTTP status and API error code; never response bodies."""
+    response = getattr(error, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is None:
+        return type(error).__name__
+    code = api_code(response)
+    return ", ".join([type(error).__name__, f"HTTP {status}"] + ([code] if code else []))
+
+
+def rejection_code(error):
+    """API code when OpenAthlete rejected the file itself; None for retryable errors."""
+    response = getattr(error, "response", None)
+    if getattr(response, "status_code", None) not in PERMANENT_STATUSES:
+        return None
+    return api_code(response)
 
 
 class OpenAthleteClient:

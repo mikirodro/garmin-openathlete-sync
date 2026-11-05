@@ -6,6 +6,14 @@ y el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-05
+
+### Añadido
+- Los FIT rechazados definitivamente por OpenAthlete (`FIT_INVALID`,
+  `FIT_MULTISPORT_UNSUPPORTED`, `FIT_DUPLICATE_TIME`…) se apartan a
+  `activities/rejected/`, ya no hacen fallar cada ciclo ni se vuelven a descargar.
+- `--retry-rejected` devuelve los FIT rechazados a la cola tras resolver la causa.
+
 ### Cambiado
 - `garminconnect` 0.3.20, `requests` >= 2.34.2 y `pytest` >= 9.2; Actions
   `checkout` v7 y `setup-python` v7 en todos los workflows.
@@ -40,5 +48,6 @@ Primera versión pública.
   y con `no-new-privileges`.
 - Dependencias, imagen base y Actions fijadas; Dependabot y `pip-audit` en CI.
 
-[Unreleased]: https://github.com/mikirodro/garmin-openathlete-sync/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/mikirodro/garmin-openathlete-sync/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/mikirodro/garmin-openathlete-sync/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mikirodro/garmin-openathlete-sync/releases/tag/v1.0.0

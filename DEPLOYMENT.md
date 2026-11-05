@@ -63,9 +63,29 @@ Las advertencias `FIT_INCOMPLETE_CHANNELS`, `FIT_MISSING_SUMMARY` o
 `FIT_NO_STREAM` indican limitaciones en los datos del archivo importado.
 Los FIT originales se conservan para revisión.
 
-`FIT_DUPLICATE_TIME` indica que otra actividad del mismo atleta empieza a la
-misma hora. La API rechaza la importación y el archivo queda pendiente; revisa
-ambas actividades antes de decidir cómo resolverlo.
+## FIT rechazados por OpenAthlete
+
+Si OpenAthlete rechaza definitivamente un archivo (HTTP 400/409/413/422 con un
+código de la API), el FIT y su nombre se mueven a `data/activities/rejected/`,
+se registra el código en SQLite y el ciclo no lo cuenta como fallo ni lo vuelve
+a descargar. Los errores transitorios (5xx, 429, red o respuestas sin código)
+siguen reintentándose en cada ciclo.
+
+| Código | Causa | Qué hacer |
+|---|---|---|
+| `FIT_DUPLICATE_TIME` | Otra actividad del atleta empieza a la misma hora | Compara ambas en OpenAthlete; si sobra la existente, bórrala y reintenta |
+| `FIT_MULTISPORT_UNSUPPORTED` | Actividad multideporte (triatlón, swimrun…) | OpenAthlete no la admite; consérvala archivada o regístrala a mano |
+| `FIT_INVALID` | El archivo no se puede interpretar | Revisa la actividad en Garmin Connect; puede ser un registro dañado o sin datos |
+
+Para reintentar los rechazados tras resolver la causa, con el servicio detenido:
+
+    docker compose stop garmin-openathlete-sync
+    docker compose run --rm garmin-openathlete-sync python -m app --retry-rejected
+    docker compose run --rm garmin-openathlete-sync python -m app --once
+    docker compose up -d
+
+`--retry-rejected` no contacta con Garmin ni con OpenAthlete: solo devuelve los
+archivos a la cola. Los que vuelvan a ser rechazados regresan a `rejected/`.
 
 ## Actualización de seguridad
 
