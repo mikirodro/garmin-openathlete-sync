@@ -202,13 +202,13 @@ atestación de procedencia. Para usarla en lugar de compilar, sustituye en
 `compose.yaml` la línea `build: .` por:
 
 ```yaml
-    image: ghcr.io/mikirodro/garmin-openathlete-sync:1.1.0
+    image: ghcr.io/mikirodro/garmin-openathlete-sync:1.2.0
 ```
 
 Verifica que la imagen procede de este repositorio antes de desplegarla:
 
 ```sh
-gh attestation verify oci://ghcr.io/mikirodro/garmin-openathlete-sync:1.1.0 --owner mikirodro
+gh attestation verify oci://ghcr.io/mikirodro/garmin-openathlete-sync:1.2.0 --owner mikirodro
 ```
 
 `python -m app --version` muestra la versión instalada.

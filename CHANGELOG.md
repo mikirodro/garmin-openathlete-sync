@@ -6,6 +6,20 @@ y el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-05
+
+### Añadido
+- Supervisión de ciclos completos mediante el estado de salud de Docker.
+- Resolución manual de importaciones FIT con resultado incierto mediante
+  `--resolve-uncertain` y, opcionalmente, `--event-id`.
+
+### Cambiado
+- Los envíos FIT con respuesta incierta requieren revisión antes de reintentarse,
+  para evitar posibles duplicados.
+- La imagen instala dependencias transitivas fijadas y verificadas con hashes.
+- CI y publicación auditan las dependencias fijadas; la guía documenta copias,
+  supervisión y recuperación de importaciones.
+
 ## [1.1.0] - 2026-11-05
 
 ### Añadido
@@ -48,6 +62,7 @@ Primera versión pública.
   y con `no-new-privileges`.
 - Dependencias, imagen base y Actions fijadas; Dependabot y `pip-audit` en CI.
 
-[Unreleased]: https://github.com/mikirodro/garmin-openathlete-sync/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/mikirodro/garmin-openathlete-sync/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/mikirodro/garmin-openathlete-sync/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/mikirodro/garmin-openathlete-sync/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mikirodro/garmin-openathlete-sync/releases/tag/v1.0.0
